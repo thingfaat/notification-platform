@@ -4,7 +4,8 @@
 
 > **Maven 多模块 + 模块化单体 + 独立消息消费者**
 
-不要一开始拆成十几个微服务。模块边界先设计清楚，后续需要时再独立部署。
+系统首月采用模块化单体架构，并将消息消费端独立部署。
+该方案优先保证模块边界、研发效率和可部署性，后续根据流量及团队规模评估服务拆分。
 
 ```markdown
 ┌─────────────────────┐
@@ -161,7 +162,7 @@ notification-platform
 
 定义并实现渠道适配器：
 
-```markdown
+```java
 public interface ChannelSender {
 
     ChannelType supportType();

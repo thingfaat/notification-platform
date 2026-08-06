@@ -34,12 +34,6 @@
             <artifactId>rocketmq-spring-boot-starter</artifactId>
         </dependency>
 
-        <!-- Redis (for distributed lock in worker) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-
         <!-- Monitoring -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

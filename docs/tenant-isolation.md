@@ -57,8 +57,8 @@ X-Tenant-Id: 10001
 
 查询：
 
-```markdown
-select \*
+```sql
+select *
 from notify_task
 where id = ?
 and tenant_id = ?
@@ -70,15 +70,15 @@ and tenant_id = ?
 
 消息信封建议：
 
-```markdown
+```json
 {
-"eventId": "事件唯一编号",
-"tenantId": 10001,
-"applicationId": 20001,
-"messageId": 30001,
-"eventType": "NOTIFICATION_SEND",
-"traceId": "链路编号",
-"occurredAt": "时间"
+  "eventId": "事件唯一编号",
+  "tenantId": 10001,
+  "applicationId": 20001,
+  "messageId": 30001,
+  "eventType": "NOTIFICATION_SEND",
+  "traceId": "链路编号",
+  "occurredAt": "时间"
 }
 ```
 
