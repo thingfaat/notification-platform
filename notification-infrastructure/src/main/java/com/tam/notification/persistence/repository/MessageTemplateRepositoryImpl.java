@@ -31,11 +31,9 @@ public class MessageTemplateRepositoryImpl implements MessageTemplateRepository 
     }
 
     @Override
-    public Optional<MessageTemplate> findByTemplateCode(
-            final Long tenantId, final Long applicationId, final String templateCode) {
+    public Optional<MessageTemplate> findByTemplateCode(final Long applicationId, final String templateCode) {
         MessageTemplateDO data = messageTemplateMapper.selectOne(
                 Wrappers.<MessageTemplateDO>lambdaQuery()
-                        .eq(MessageTemplateDO::getTenantId, tenantId)
                         .eq(MessageTemplateDO::getApplicationId, applicationId)
                         .eq(MessageTemplateDO::getTemplateCode, templateCode));
         return Optional.ofNullable(data).map(this::toDomain);

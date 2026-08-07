@@ -15,14 +15,12 @@ public class ChannelAccountService {
 
     public ChannelAccount create(Long applicationId, String accountCode, String accountName,
                                  String channelType, String provider, String configJson) {
-        Long tenantId = TenantContext.requireTenantId();
-        channelAccountRepository.findByAccountCode(tenantId, accountCode)
+        channelAccountRepository.findByAccountCode(applicationId, accountCode)
                 .ifPresent(existing -> {
                     throw new BusinessException(CommonErrorCode.BUSINESS_ERROR, "渠道账号已经存在");
                 });
 
         ChannelAccount channelAccount = new ChannelAccount();
-        channelAccount.setTenantId(tenantId);
         channelAccount.setApplicationId(applicationId);
         channelAccount.setAccountCode(accountCode);
         channelAccount.setAccountName(accountName);

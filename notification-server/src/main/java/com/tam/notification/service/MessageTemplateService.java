@@ -15,14 +15,12 @@ public class MessageTemplateService {
 
     public MessageTemplate create(Long applicationId, String templateCode, String templateName,
                                   String channelType, String templateContent, String variableSchema) {
-        Long tenantId = TenantContext.requireTenantId();
-        messageTemplateRepository.findByTemplateCode(tenantId, applicationId, templateCode)
+        messageTemplateRepository.findByTemplateCode(applicationId, templateCode)
                 .ifPresent(existing -> {
                     throw new BusinessException(CommonErrorCode.BUSINESS_ERROR, "模板编码已经存在");
                 });
 
         MessageTemplate template = new MessageTemplate();
-        template.setTenantId(tenantId);
         template.setApplicationId(applicationId);
         template.setTemplateCode(templateCode);
         template.setTemplateName(templateName);

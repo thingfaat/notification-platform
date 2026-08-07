@@ -7,7 +7,7 @@ public interface MessageTemplateRepository {
 
     Optional<MessageTemplate> findById(Long id);
 
-    Optional<MessageTemplate> findByTemplateCode(Long tenantId, Long applicationId, String templateCode);
+    Optional<MessageTemplate> findByTemplateCode(Long applicationId, String templateCode);
 
     void update(MessageTemplate template);
 
