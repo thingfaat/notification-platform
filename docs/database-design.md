@@ -118,3 +118,74 @@ published_at
 发送任务、发送明细和 Outbox 记录在同一个本地事务中保存。
 
 ---
+
+## Flyway今天真正开始发挥作用
+
+建立：
+
+```
+notification-infrastructure
+└── src/main/resources
+└── db
+└── migration
+└── V1__init_base_tables.sql
+```
+
+把刚才四张表全部写进去。 然后：
+
+```
+mvn -pl notification-server -am spring-boot:run
+```
+
+启动时：
+
+```
+Spring Boot
+↓
+Flyway
+↓
+检查 flyway_schema_history
+↓
+发现 V1 未执行
+↓
+执行 V1__init_base_tables.sql
+↓
+记录执行历史
+```
+
+以后：
+
+```
+V2__init_notification_task.sql
+V3__add_xxx_index.sql
+```
+
+不要修改已经发布执行过的 V1。
+
+这点面试经常问： 为什么用了 Flyway 后不能直接修改历史 SQL？ 因为数据库结构变化本身也是版本历史。
+
+正确：
+
+```
+V1 建表
+V2 增字段
+V3 建索引
+```
+
+错误：
+
+```
+V1执行过了
+↓
+直接回去修改V1
+```
+
+否则：
+
+```
+开发环境
+测试环境
+生产环境
+```
+
+数据库版本就可能不一致。
