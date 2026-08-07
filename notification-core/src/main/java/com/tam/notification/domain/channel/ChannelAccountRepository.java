@@ -7,7 +7,7 @@ public interface ChannelAccountRepository {
 
     Optional<ChannelAccount> findById(Long id);
 
-    Optional<ChannelAccount> findByTenantIdAndApplicationIdAndAccountCode(Long tenantId, Long applicationId, String accountCode);
+    Optional<ChannelAccount> findByAccountCode(Long applicationId, String accountCode);
 
     void update(ChannelAccount channelAccount);
 

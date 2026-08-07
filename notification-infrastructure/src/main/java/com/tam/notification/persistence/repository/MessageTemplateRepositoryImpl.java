@@ -31,7 +31,7 @@ public class MessageTemplateRepositoryImpl implements MessageTemplateRepository 
     }
 
     @Override
-    public Optional<MessageTemplate> findByTenantIdAndApplicationIdAndTemplateCode(
+    public Optional<MessageTemplate> findByTemplateCode(
             final Long tenantId, final Long applicationId, final String templateCode) {
         MessageTemplateDO data = messageTemplateMapper.selectOne(
                 Wrappers.<MessageTemplateDO>lambdaQuery()

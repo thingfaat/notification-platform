@@ -31,11 +31,9 @@ public class ChannelAccountRepositoryImpl implements ChannelAccountRepository {
     }
 
     @Override
-    public Optional<ChannelAccount> findByTenantIdAndApplicationIdAndAccountCode(
-            final Long tenantId, final Long applicationId, final String accountCode) {
+    public Optional<ChannelAccount> findByAccountCode(final Long applicationId, final String accountCode) {
         ChannelAccountDO data = channelAccountMapper.selectOne(
                 Wrappers.<ChannelAccountDO>lambdaQuery()
-                        .eq(ChannelAccountDO::getTenantId, tenantId)
                         .eq(ChannelAccountDO::getApplicationId, applicationId)
                         .eq(ChannelAccountDO::getAccountCode, accountCode));
         return Optional.ofNullable(data).map(this::toDomain);

@@ -7,10 +7,7 @@ import com.tam.notification.service.ApplicationService;
 import com.tam.notification.vo.ApplicationResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/applications")
@@ -23,5 +20,23 @@ public class ApplicationController {
     public ApiResponse<ApplicationResponse> create(@Valid @RequestBody CreateApplicationRequest request) {
         Application application = applicationService.create(request.appCode(), request.appName());
         return ApiResponse.success(ApplicationResponse.from(application));
+    }
+
+    @GetMapping
+    public ApiResponse<ApplicationResponse> get(@RequestParam Long id) {
+        Application application = applicationService.get(id);
+        return ApiResponse.success(ApplicationResponse.from(application));
+    }
+
+    @PutMapping
+    public ApiResponse<ApplicationResponse> update(@RequestParam Long id, @Valid @RequestBody CreateApplicationRequest request) {
+        applicationService.update(id, request.appCode(), request.appName());
+        return ApiResponse.success(null);
+    }
+
+    @DeleteMapping
+    public ApiResponse<Void> delete(@RequestParam Long id) {
+        applicationService.delete(id);
+        return ApiResponse.success(null);
     }
 }

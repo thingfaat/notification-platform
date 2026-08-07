@@ -31,10 +31,9 @@ public class ApplicationRepositoryImpl implements ApplicationRepository {
     }
 
     @Override
-    public Optional<Application> findByTenantIdAndAppCode(final Long tenantId, final String appCode) {
+    public Optional<Application> findByAppCode(final String appCode) {
         ApplicationDO data = applicationMapper.selectOne(
                 Wrappers.<ApplicationDO>lambdaQuery()
-                        .eq(ApplicationDO::getTenantId, tenantId)
                         .eq(ApplicationDO::getAppCode, appCode));
         return Optional.ofNullable(data).map(this::toDomain);
     }

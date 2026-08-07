@@ -7,7 +7,7 @@ public interface ApplicationRepository {
 
     Optional<Application> findById(Long id);
 
-    Optional<Application> findByTenantIdAndAppCode(Long tenantId, String appCode);
+    Optional<Application> findByAppCode(String appCode);
 
     void update(Application application);
 
