@@ -12,6 +12,7 @@ public class MessageTemplateDO {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
+    @TableField(fill = FieldFill.INSERT)
     private Long tenantId;
 
     private Long applicationId;

@@ -21,7 +21,6 @@ public class ApplicationService {
                 });
 
         Application application = new Application();
-        application.setTenantId(tenantId);
         application.setAppCode(appCode);
         application.setAppName(appName);
         application.setStatus(1);
