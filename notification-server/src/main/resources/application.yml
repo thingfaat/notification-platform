@@ -30,11 +30,11 @@ rocketmq:
     send-message-timeout: 3000
 
 management:
-  endpoint:
+  endpoints:
     web:
       exposure:
         include: health,info,prometheus
-  endpoints:
+  endpoint:
     health:
       show-details: always
 

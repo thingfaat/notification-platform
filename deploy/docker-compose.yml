@@ -49,7 +49,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "redis-cli -a 12345678 ping | grep PONG"
+          "redis-cli -a notification123 ping | grep PONG"
         ]
       interval: 10s
       timeout: 5s

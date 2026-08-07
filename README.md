@@ -57,6 +57,31 @@
 
 ## 12. 本地启动方式
 
+### 1. 启动基础设施
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d
+```
+
+### 2. 启动 Server
+
+```aiignore
+mvn -pl notification-server -am spring-boot:run
+```
+
+### 3. 启动 Worker
+
+```aiignore
+mvn -pl notification-worker -am spring-boot:run
+```
+
+### 4. 健康检查
+
+```aiignore
+curl http://localhost:8080/actuator/health
+curl http://localhost:8081/actuator/health
+```
+
 ## 13. 项目路线图
 
 ## 14. 项目文档
