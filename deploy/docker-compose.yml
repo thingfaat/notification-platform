@@ -1,0 +1,108 @@
+name: notification-platform
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: notification-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: notification_platform
+      MYSQL_USER: notification
+      MYSQL_PASSWORD: notification123
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - notification-network
+
+  redis:
+    image: redis:7
+    container_name: notification-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - "notification123"
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "redis-cli -a 12345678 ping | grep PONG"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - notification-network
+
+  namesrv:
+    image: apache/rocketmq:5.3.2
+    container_name: notification-rmq-namesrv
+    restart: unless-stopped
+    command: sh mqnamesrv
+    ports:
+      - "9876:9876"
+    networks:
+      - notification-network
+
+  broker:
+    image: apache/rocketmq:5.3.2
+    container_name: notification-rmq-broker
+    restart: unless-stopped
+    depends_on:
+      - namesrv
+    environment:
+      NAMESRV_ADDR: namesrv:9876
+      HEAP_OPTS: >-
+        -Xms512m
+        -Xmx512m
+        -Xmn256m
+        -XX:MaxDirectMemorySize=512m
+    command:
+      - sh
+      - mqbroker
+      - -n
+      - namesrv:9876
+      - -c
+      - /home/rocketmq/rocketmq-5.3.2/conf/broker.conf
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+      - "10912:10912"
+    volumes:
+      - ./rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.2/conf/broker.conf
+      - rocketmq-store:/home/rocketmq/store
+    networks:
+      - notification-network
+
+volumes:
+  mysql-data:
+  redis-data:
+  rocketmq-store:
+
+networks:
+  notification-network:
+    driver: bridge
+
