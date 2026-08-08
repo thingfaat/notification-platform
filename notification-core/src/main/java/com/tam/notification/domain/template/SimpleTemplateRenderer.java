@@ -1,7 +1,7 @@
 package com.tam.notification.domain.template;
 
-import com.tam.notification.common.exception.BusinessException;
 import com.tam.notification.common.exception.CommonErrorCode;
+import com.tam.notification.common.exception.TemplateVariableNotFoundException;
 
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -30,7 +30,7 @@ public class SimpleTemplateRenderer implements TemplateRenderer {
             Object value = params.get(variable);
 
             if (value == null) {
-                throw new BusinessException(CommonErrorCode.BUSINESS_ERROR, "缺少模板参数" + variable);
+                throw new TemplateVariableNotFoundException(CommonErrorCode.BUSINESS_ERROR, "缺少模板参数" + variable);
             }
             matcher.appendReplacement(result, Matcher.quoteReplacement(String.valueOf(value)));
         }

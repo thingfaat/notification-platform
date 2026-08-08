@@ -1,6 +1,9 @@
 package com.tam.notification.persistence.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tam.notification.common.exception.BusinessException;
+import com.tam.notification.common.exception.CommonErrorCode;
 import com.tam.notification.domain.enums.MessageStatus;
 import com.tam.notification.domain.message.NotificationMessage;
 import com.tam.notification.domain.message.NotificationMessageRepository;
@@ -10,11 +13,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Map;
 
 @Repository
 @RequiredArgsConstructor
 public class NotificationMessageRepositoryImpl implements NotificationMessageRepository {
     private final NotificationMessageMapper messageMapper;
+    private final ObjectMapper objectMapper;
 
     @Override
     public NotificationMessage save(NotificationMessage message) {
@@ -47,7 +52,7 @@ public class NotificationMessageRepositoryImpl implements NotificationMessageRep
         data.setTaskId(message.getTaskId());
         data.setMessageNo(message.getMessageNo());
         data.setReceiver(message.getReceiver());
-        data.setTemplateParams(message.getTemplateParams());
+        data.setTemplateParams(serializeParams(message.getTemplateParams()));
         data.setRenderedContent(message.getRenderedContent());
 
         if (message.getMessageStatus() != null) {
@@ -70,7 +75,7 @@ public class NotificationMessageRepositoryImpl implements NotificationMessageRep
         message.setTaskId(data.getTaskId());
         message.setMessageNo(data.getMessageNo());
         message.setReceiver(data.getReceiver());
-        message.setTemplateParams(data.getTemplateParams());
+        message.setTemplateParams(deserializeParams(data.getTemplateParams()));
         message.setRenderedContent(data.getRenderedContent());
         message.setMessageStatus(MessageStatus.valueOf(data.getMessageStatus()));
         message.setRetryCount(data.getRetryCount());
@@ -80,5 +85,21 @@ public class NotificationMessageRepositoryImpl implements NotificationMessageRep
         message.setFailureReason(data.getFailureReason());
         message.setVersion(data.getVersion());
         return message;
+    }
+
+    private String serializeParams(Map<String, Object> params) {
+        try {
+            return objectMapper.writeValueAsString(params);
+        } catch (Exception e) {
+            throw new BusinessException(CommonErrorCode.BUSINESS_ERROR, "参数序列化失败");
+        }
+    }
+
+    private Map<String, Object> deserializeParams(String params) {
+        try {
+            return objectMapper.readValue(params, Map.class);
+        } catch (Exception e) {
+            throw new BusinessException(CommonErrorCode.BUSINESS_ERROR, "参数反序列化失败");
+        }
     }
 }

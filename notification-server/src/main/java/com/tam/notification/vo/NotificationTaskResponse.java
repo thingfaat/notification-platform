@@ -22,7 +22,7 @@ public record NotificationTaskResponse(
                 task.getRequestId(),
                 task.getApplicationId(),
                 task.getTemplateId(),
-                task.getChannelType(),
+                task.getChannelType().name(),
                 task.getTaskStatus().name(),
                 task.getScheduleTime(),
                 task.getTotalCount(),

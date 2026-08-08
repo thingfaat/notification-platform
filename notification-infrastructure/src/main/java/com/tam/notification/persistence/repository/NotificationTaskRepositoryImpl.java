@@ -1,6 +1,7 @@
 package com.tam.notification.persistence.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.tam.notification.domain.enums.ChannelType;
 import com.tam.notification.domain.enums.TaskStatus;
 import com.tam.notification.domain.task.NotificationTask;
 import com.tam.notification.domain.task.NotificationTaskRepository;
@@ -50,7 +51,7 @@ public class NotificationTaskRepositoryImpl implements NotificationTaskRepositor
         data.setApplicationId(task.getApplicationId());
         data.setRequestId(task.getRequestId());
         data.setTemplateId(task.getTemplateId());
-        data.setChannelType(task.getChannelType());
+        data.setChannelType(task.getChannelType().name());
 
         if (task.getTaskStatus() != null) {
             data.setTaskStatus(
@@ -73,7 +74,7 @@ public class NotificationTaskRepositoryImpl implements NotificationTaskRepositor
         task.setApplicationId(data.getApplicationId());
         task.setRequestId(data.getRequestId());
         task.setTemplateId(data.getTemplateId());
-        task.setChannelType(data.getChannelType());
+        task.setChannelType(ChannelType.valueOf(data.getChannelType()));
         task.setTaskStatus(TaskStatus.valueOf(data.getTaskStatus()));
         task.setScheduleTime(data.getScheduleTime());
         task.setTotalCount(data.getTotalCount());

@@ -4,6 +4,7 @@ import com.tam.notification.domain.enums.MessageStatus;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Data
 public class NotificationMessage {
@@ -13,7 +14,7 @@ public class NotificationMessage {
     private Long taskId;
     private String messageNo;
     private String receiver;
-    private String templateParams;
+    private Map<String, Object> templateParams;
     private String renderedContent;
     private MessageStatus messageStatus;
     private Integer retryCount;

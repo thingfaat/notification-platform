@@ -1,5 +1,6 @@
 package com.tam.notification.domain.task;
 
+import com.tam.notification.domain.enums.ChannelType;
 import com.tam.notification.domain.enums.TaskStatus;
 import lombok.Data;
 
@@ -13,7 +14,7 @@ public class NotificationTask {
     private Long applicationId;
     private String requestId;
     private Long templateId;
-    private String channelType;
+    private ChannelType channelType;
     private TaskStatus taskStatus;
     private LocalDateTime scheduleTime;
     private Integer totalCount;
@@ -23,4 +24,9 @@ public class NotificationTask {
     private Integer version;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    public void changeStatus(TaskStatus targetStatus) {
+        TaskStateMachine.checkTransition(this.taskStatus, targetStatus);
+        this.taskStatus = targetStatus;
+    }
 }

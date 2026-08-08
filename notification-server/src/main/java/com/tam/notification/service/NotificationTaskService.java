@@ -3,6 +3,7 @@ package com.tam.notification.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tam.notification.common.exception.BusinessException;
 import com.tam.notification.common.exception.CommonErrorCode;
+import com.tam.notification.domain.enums.ChannelType;
 import com.tam.notification.domain.enums.MessageStatus;
 import com.tam.notification.domain.enums.TaskStatus;
 import com.tam.notification.domain.message.NotificationMessage;
@@ -29,7 +30,6 @@ public class NotificationTaskService {
     private final NotificationTaskRepository taskRepository;
     private final NotificationMessageRepository messageRepository;
     private final TemplateRenderer templateRenderer;
-    private final ObjectMapper objectMapper;
 
     @Transactional
     public NotificationTask create(CreateNotificationTaskRequest request) {
@@ -56,7 +56,7 @@ public class NotificationTaskService {
         task.setApplicationId(request.applicationId());
         task.setRequestId(request.requestId());
         task.setTemplateId(template.getId());
-        task.setChannelType(template.getChannelType());
+        task.setChannelType(ChannelType.valueOf(template.getChannelType()));
         task.setTaskStatus(TaskStatus.CREATED);
         task.setScheduleTime(request.scheduleTime());
         task.setTotalCount(request.recipients().size());
@@ -81,7 +81,7 @@ public class NotificationTaskService {
         message.setTaskId(task.getId());
         message.setMessageNo(generateMessageNo());
         message.setReceiver(recipient.receiver());
-        message.setTemplateParams(serializeParams(recipient.params()));
+        message.setTemplateParams(recipient.params());
         message.setRenderedContent(renderedContent);
         message.setMessageStatus(MessageStatus.CREATED);
         message.setRetryCount(0);
@@ -95,13 +95,5 @@ public class NotificationTaskService {
 
     private String generateMessageNo() {
         return "MSG_" + UUID.randomUUID().toString().replace("-", "");
-    }
-
-    private String serializeParams(Map<String, Object> params) {
-        try {
-            return objectMapper.writeValueAsString(params);
-        } catch (Exception e) {
-            throw new BusinessException(CommonErrorCode.BUSINESS_ERROR, "参数序列化失败");
-        }
     }
 }
