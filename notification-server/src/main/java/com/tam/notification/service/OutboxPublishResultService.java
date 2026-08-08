@@ -17,7 +17,6 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class OutboxPublishResultService {
     private final OutboxRepository outboxRepository;
-    private final NotificationMessageRepository messageRepository;
 
     @Value("${notification.outbox.max-retry-count:3}")
     private Integer maxRetryCount;

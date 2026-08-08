@@ -7,6 +7,7 @@ import com.tam.notification.domain.outbox.ConsumeRecordRepository;
 import com.tam.notification.domain.outbox.NotificationSendEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,14 +15,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class NotificationConsumeService {
-    private static final String CONSUMER_GROUP = "notification-worker-group";
     private final ConsumeRecordRepository consumeRecordRepository;
     private final NotificationMessageRepository messageRepository;
+
+    @Value("${notification.mq.consumer-group}")
+    private String consumerGroup;
 
     @Transactional
     public void consume(NotificationSendEvent event) {
         // 先抢消费资格
-        boolean firstConsume = consumeRecordRepository.tryCreate(event.tenantId(), CONSUMER_GROUP, event.eventId(), event.messageId());
+        boolean firstConsume = consumeRecordRepository.tryCreate(event.tenantId(), consumerGroup, event.eventId(), event.messageId());
         if (!firstConsume) {
             // 重复消费
             log.info("重复MQ消息，直接忽略, eventId={}", event.eventId());
