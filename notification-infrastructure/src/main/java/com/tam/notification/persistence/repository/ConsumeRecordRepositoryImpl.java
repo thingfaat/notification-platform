@@ -1,5 +1,6 @@
 package com.tam.notification.persistence.repository;
 
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.tam.notification.domain.outbox.ConsumeRecordRepository;
 import com.tam.notification.persistence.entity.ConsumeRecordDO;
 import com.tam.notification.persistence.mapper.ConsumeRecordMapper;
@@ -15,10 +16,12 @@ public class ConsumeRecordRepositoryImpl implements ConsumeRecordRepository {
     @Override
     public boolean tryCreate(final Long tenantId, final String consumerGroup, final String eventId, final Long messageId) {
         ConsumeRecordDO entity = new ConsumeRecordDO();
+        // 自定义insert，显示生成id最稳妥
+        entity.setId(IdWorker.getId());
         entity.setTenantId(tenantId);
         entity.setConsumerGroup(consumerGroup);
         entity.setEventId(eventId);
         entity.setMessageId(messageId);
-        return consumeRecordMapper.insert(entity) > 0;
+        return consumeRecordMapper.insertIgnore(entity) > 0;
     }
 }

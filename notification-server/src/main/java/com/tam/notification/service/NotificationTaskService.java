@@ -22,6 +22,7 @@ import com.tam.notification.dto.CreateNotificationTaskRequest;
 import com.tam.notification.dto.RecipientRequest;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,6 +39,9 @@ public class NotificationTaskService {
     private final OutboxRepository outboxRepository;
     private final TemplateRenderer templateRenderer;
     private final ObjectMapper objectMapper;
+
+    @Value("${notification.mq.topic}")
+    private String notificationTopic;
 
     @Transactional
     public NotificationTask create(CreateNotificationTaskRequest request) {
@@ -110,7 +114,7 @@ public class NotificationTaskService {
         message.setReceiver(recipient.receiver());
         message.setTemplateParams(recipient.params());
         message.setRenderedContent(renderedContent);
-        message.setMessageStatus(MessageStatus.CREATED);
+        message.setMessageStatus(MessageStatus.QUEUED);
         message.setRetryCount(0);
         // 3. 保存Message
         messageRepository.save(message);
@@ -135,7 +139,7 @@ public class NotificationTaskService {
         outbox.setAggregateType("NOTIFICATION_MESSAGE");
         outbox.setAggregateId(message.getId());
         outbox.setEventType("NOTIFICATION_SEND");
-        outbox.setTopic("notification-send-topic");
+        outbox.setTopic(notificationTopic);
         outbox.setPayload(serializeEvent(sendEvent));
         outbox.setPublishStatus(OutboxStatus.NEW);
         outbox.setRetryCount(0);

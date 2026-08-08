@@ -40,4 +40,8 @@ public class OutboxEventDO {
     private String lastError;
 
     private LocalDateTime publishedAt;
+
+    private String lockedBy;
+
+    private LocalDateTime lockedAt;
 }

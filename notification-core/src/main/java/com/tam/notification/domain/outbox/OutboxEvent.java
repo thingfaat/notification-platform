@@ -19,4 +19,6 @@ public class OutboxEvent {
     private LocalDateTime nextRetryTime;
     private String lastError;
     private LocalDateTime publishedAt;
+    private String lockedBy;
+    private LocalDateTime lockedAt;
 }

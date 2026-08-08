@@ -49,7 +49,14 @@ public class NotificationMessageRepositoryImpl implements NotificationMessageRep
 
     @Override
     public void update(NotificationMessage message) {
-        messageMapper.updateById(toDO(message));
+        final var affectedRows = messageMapper.updateById(toDO(message));
+        if (affectedRows != 1) {
+            throw new IllegalStateException("消息状态已被其他线程修改，messageId = " + message.getId());
+        }
+        // 当前对象继续使用的话，同步内存version
+        if (message.getVersion() != null) {
+            message.setVersion(message.getVersion() + 1);
+        }
     }
 
     private NotificationMessageDO toDO(NotificationMessage message) {

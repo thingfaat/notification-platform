@@ -1,6 +1,5 @@
 package com.tam.notification.persistence.repository;
 
-import com.baomidou.mybatisplus.annotation.InterceptorIgnore;
 import com.tam.notification.domain.outbox.OutboxEvent;
 import com.tam.notification.domain.outbox.OutboxRepository;
 import com.tam.notification.domain.outbox.OutboxStatus;
@@ -28,29 +27,26 @@ public class OutboxRepositoryImpl implements OutboxRepository {
     }
 
     @Override
-    public List<OutboxEvent> findPending(final int limit) {
-        List<OutboxEventDO> list = outboxEventMapper.selectPendingAcrossTenants(limit);
-        return list.stream().map(this::toDomain).collect(Collectors.toList());
+    public List<OutboxEvent> findClaimable(final int limit, LocalDateTime claimExpiredBefore) {
+        return outboxEventMapper.selectClaimableAcrossTenants(limit, claimExpiredBefore)
+                .stream()
+                .map(this::toDomain)
+                .collect(Collectors.toList());
     }
 
     @Override
-    public void markPublished(final Long id) {
-        OutboxEventDO data = new OutboxEventDO();
-        data.setId(id);
-        data.setPublishStatus(OutboxStatus.PUBLISHED.name());
-        data.setPublishedAt(LocalDateTime.now());
-        outboxEventMapper.updateById(data);
+    public boolean tryClaim(final Long id, final String lockOwner, final LocalDateTime claimExpiredBefore) {
+        return outboxEventMapper.tryClaim(id, lockOwner, claimExpiredBefore) == 1;
     }
 
     @Override
-    public void markFailed(final Long id, final Integer retryCount, final LocalDateTime nextRetryTime, final String error) {
-        OutboxEventDO data = new OutboxEventDO();
-        data.setId(id);
-        data.setPublishStatus(retryCount >= 3 ? OutboxStatus.DEAD.name() : OutboxStatus.FAILED.name());
-        data.setRetryCount(retryCount);
-        data.setNextRetryTime(nextRetryTime);
-        data.setLastError(error);
-        outboxEventMapper.updateById(data);
+    public boolean markPublished(final Long id, final String lockOwner) {
+        return outboxEventMapper.markPublished(id, lockOwner) == 1;
+    }
+
+    @Override
+    public boolean markFailed(final Long id, String lockOwner, OutboxStatus targetStatus, final Integer retryCount, final LocalDateTime nextRetryTime, final String error) {
+        return outboxEventMapper.markFailed(id, lockOwner, targetStatus.name(), retryCount, nextRetryTime, error) == 1;
     }
 
     private OutboxEventDO toDO(final OutboxEvent event) {
@@ -68,6 +64,8 @@ public class OutboxRepositoryImpl implements OutboxRepository {
         data.setNextRetryTime(event.getNextRetryTime());
         data.setLastError(event.getLastError());
         data.setPublishedAt(event.getPublishedAt());
+        data.setLockedBy(event.getLockedBy());
+        data.setLockedAt(event.getLockedAt());
         return data;
     }
 
@@ -86,6 +84,8 @@ public class OutboxRepositoryImpl implements OutboxRepository {
         event.setNextRetryTime(data.getNextRetryTime());
         event.setLastError(data.getLastError());
         event.setPublishedAt(data.getPublishedAt());
+        event.setLockedBy(data.getLockedBy());
+        event.setLockedAt(data.getLockedAt());
         return event;
     }
 }

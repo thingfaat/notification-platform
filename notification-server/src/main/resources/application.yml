@@ -34,6 +34,9 @@ notification:
   outbox:
     publish-interval-ms: 1000
     batch-size: 100
+    # PROCESSING超过30秒认为实例可能已经死亡
+    claim-timeout-seconds: 30
+    max-retry-count: 3
 
 management:
   endpoints:

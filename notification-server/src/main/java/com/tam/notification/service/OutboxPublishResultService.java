@@ -1,40 +1,65 @@
 package com.tam.notification.service;
 
-import com.tam.notification.common.exception.BusinessException;
-import com.tam.notification.common.exception.CommonErrorCode;
-import com.tam.notification.domain.enums.MessageStatus;
-import com.tam.notification.domain.message.NotificationMessage;
 import com.tam.notification.domain.message.NotificationMessageRepository;
 import com.tam.notification.domain.outbox.OutboxEvent;
 import com.tam.notification.domain.outbox.OutboxRepository;
+import com.tam.notification.domain.outbox.OutboxStatus;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OutboxPublishResultService {
     private final OutboxRepository outboxRepository;
     private final NotificationMessageRepository messageRepository;
 
+    @Value("${notification.outbox.max-retry-count:3}")
+    private Integer maxRetryCount;
+
     @Transactional
-    public void markPublished(OutboxEvent event) {
-        outboxRepository.markPublished(event.getId());
-        NotificationMessage message = messageRepository.findById(event.getAggregateId())
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.BUSINESS_ERROR, "消息不存在"));
-        if (message.getMessageStatus() == MessageStatus.CREATED) {
-            message.changeStatus(MessageStatus.QUEUED);
-            messageRepository.update(message);
+    public void markPublished(OutboxEvent event, String publisherId) {
+        final var success = outboxRepository.markPublished(event.getId(), publisherId);
+        if (!success) {
+            throw new IllegalStateException("Outbox发布状态更新失败，Claim可能已失效：" + event.getEventId());
         }
     }
 
     @Transactional
-    public void markFailed(OutboxEvent event, Exception e) {
+    public void markFailed(OutboxEvent event, String publisherId, Exception e) {
         int retryCount = event.getRetryCount() + 1;
-        LocalDateTime nextRetryTime = LocalDateTime.now().plusSeconds(calculateDelay(retryCount));
-        outboxRepository.markFailed(event.getId(), retryCount, nextRetryTime, e.getMessage());
+        OutboxStatus targetStatus;
+        LocalDateTime nextRetryTime;
+        if (retryCount >= maxRetryCount) {
+            targetStatus = OutboxStatus.DEAD;
+            nextRetryTime = null;
+        } else {
+            targetStatus = OutboxStatus.FAILED;
+            nextRetryTime = LocalDateTime.now().plusSeconds(calculateDelay(retryCount));
+        }
+
+        final var success = outboxRepository.markFailed(event.getId(), publisherId, targetStatus, retryCount, nextRetryTime, truncateError(e.getMessage()));
+        if (!success) {
+            log.warn("Outbox发布状态更新失败，Claim可能已被其他实例接管，eventId = {}", event.getEventId());
+        }
+    }
+
+    /**
+     * 截断错误信息
+     *
+     * @param error
+     * @return
+     */
+    private String truncateError(final String error) {
+        if (error == null) {
+            return null;
+        }
+        return error.length() <= 1000 ? error : error.substring(0, 1000);
     }
 
     /**
