@@ -14,6 +14,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -28,6 +29,12 @@ public class NotificationMessageRepositoryImpl implements NotificationMessageRep
         message.setId(data.getId());
         message.setTenantId(data.getTenantId());
         return message;
+    }
+
+    @Override
+    public Optional<NotificationMessage> findById(final Long id) {
+        return Optional.ofNullable(messageMapper.selectById(id))
+                .map(this::toDomain);
     }
 
     @Override

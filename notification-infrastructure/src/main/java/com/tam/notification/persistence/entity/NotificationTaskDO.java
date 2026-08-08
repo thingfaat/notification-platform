@@ -17,9 +17,6 @@ public class NotificationTaskDO {
     @Version
     private Integer version;
 
-    // @TableLogic
-    // private Integer deleted;
-
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

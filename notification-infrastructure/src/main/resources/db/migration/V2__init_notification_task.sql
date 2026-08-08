@@ -11,12 +11,12 @@ CREATE TABLE notify_task
     total_count    INT         NOT NULL DEFAULT 0,
     success_count  INT         NOT NULL DEFAULT 0,
     failed_count   INT         NOT NULL DEFAULT 0,
-    created_at     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    updated_at     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    created_at     DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at     DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     version        INT         NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_task_request (tenant_id,application_id,request_id),
-    KEY            idx_task_status (tenant_id,task_status)
+    UNIQUE KEY uk_task_request (tenant_id, application_id, request_id),
+    KEY idx_task_status (tenant_id, task_status)
 );
 
 CREATE TABLE notify_message
@@ -38,7 +38,7 @@ CREATE TABLE notify_message
     updated_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     version             INT          NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_message_no (tenant_id,message_no),
-    KEY                 idx_task (tenant_id,task_id),
-    KEY                 idx_message_status (tenant_id,message_status)
+    UNIQUE KEY uk_message_no (tenant_id, message_no),
+    KEY idx_task (tenant_id, task_id),
+    KEY idx_message_status (tenant_id, message_status)
 );

@@ -1,45 +1,43 @@
 package com.tam.notification.persistence.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.tam.notification.domain.outbox.OutboxStatus;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 @Data
-@TableName("notify_message")
-public class NotificationMessageDO {
+@TableName("notify_outbox")
+public class OutboxEventDO {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     @TableField(fill = FieldFill.INSERT)
     private Long tenantId;
 
-    @Version
-    private Integer version;
-
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
 
-    private Long taskId;
+    private String eventId;
 
-    private String messageNo;
+    private String aggregateType;
 
-    private String receiver;
+    private Long aggregateId;
 
-    private String templateParams;
+    private String eventType;
 
-    private String renderedContent;
+    private String topic;
 
-    private String messageStatus;
+    private String payload;
+
+    private String publishStatus;
 
     private Integer retryCount;
 
     private LocalDateTime nextRetryTime;
 
-    private String providerMessageId;
+    private String lastError;
 
-    private String failureCode;
-
-    private String failureReason;
+    private LocalDateTime publishedAt;
 }

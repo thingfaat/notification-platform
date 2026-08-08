@@ -26,8 +26,14 @@ spring:
 rocketmq:
   name-server: ${ROCKETMQ_NAME_SERVER:127.0.0.1:9876}
   producer:
-    group: notification-server-producer
+    group: notification-producer-group
     send-message-timeout: 3000
+notification:
+  mq:
+    topic: notification-send-topic
+  outbox:
+    publish-interval-ms: 1000
+    batch-size: 100
 
 management:
   endpoints:

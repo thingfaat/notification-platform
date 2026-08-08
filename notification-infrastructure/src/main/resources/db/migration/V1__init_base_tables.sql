@@ -6,8 +6,8 @@ CREATE TABLE sys_tenant
     tenant_name VARCHAR(128) NOT NULL,
     status      TINYINT      NOT NULL DEFAULT 1,
     deleted     TINYINT      NOT NULL DEFAULT 0,
-    created_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    updated_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     version     INT          NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     UNIQUE KEY uk_tenant_code (tenant_code)
@@ -22,12 +22,12 @@ CREATE TABLE sys_application
     app_name   VARCHAR(128) NOT NULL,
     status     TINYINT      NOT NULL DEFAULT 1,
     deleted    TINYINT      NOT NULL DEFAULT 0,
-    created_at DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    updated_at DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    created_at DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     version    INT          NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_tenant_app_code (tenant_id,app_code),
-    KEY        idx_tenant_id (tenant_id)
+    UNIQUE KEY uk_tenant_app_code (tenant_id, app_code),
+    KEY idx_tenant_id (tenant_id)
 );
 
 -- 通知渠道
@@ -43,12 +43,12 @@ CREATE TABLE notify_channel_account
     config_json    JSON,
     status         TINYINT      NOT NULL DEFAULT 1,
     deleted        TINYINT      NOT NULL DEFAULT 0,
-    created_at     DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    updated_at     DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    created_at     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     version        INT          NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_channel_account (tenant_id,application_id,account_code),
-    KEY            idx_application (tenant_id,application_id)
+    UNIQUE KEY uk_channel_account (tenant_id, application_id, account_code),
+    KEY idx_application (tenant_id, application_id)
 );
 
 -- 通知模板
@@ -64,10 +64,10 @@ CREATE TABLE notify_template
     variable_schema  JSON,
     status           TINYINT      NOT NULL DEFAULT 1,
     deleted          TINYINT      NOT NULL DEFAULT 0,
-    created_at       DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    updated_at       DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    created_at       DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at       DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     version          INT          NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_template (tenant_id,application_id,template_code),
-    KEY              idx_application_channel (tenant_id,application_id,channel_type)
+    UNIQUE KEY uk_template (tenant_id, application_id, template_code),
+    KEY idx_application_channel (tenant_id, application_id, channel_type)
 );

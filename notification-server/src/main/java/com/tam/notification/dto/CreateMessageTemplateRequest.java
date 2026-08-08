@@ -4,7 +4,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 public record CreateMessageTemplateRequest(
-
         @NotNull(message = "应用ID不能为空")
         Long applicationId,
 
