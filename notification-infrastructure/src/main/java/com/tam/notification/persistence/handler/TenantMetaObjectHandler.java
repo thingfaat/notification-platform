@@ -1,4 +1,4 @@
-package com.tam.notification.mybatis;
+package com.tam.notification.persistence.handler;
 
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import com.tam.notification.common.tenant.TenantContext;
@@ -10,6 +10,7 @@ public class TenantMetaObjectHandler implements MetaObjectHandler {
 
     @Override
     public void insertFill(MetaObject metaObject) {
+        // 当前do没有 tenantId字段，直接跳过
         if (!metaObject.hasSetter("tenantId")) {
             return;
         }

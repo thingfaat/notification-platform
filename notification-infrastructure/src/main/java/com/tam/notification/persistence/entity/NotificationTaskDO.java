@@ -6,8 +6,8 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("notify_template")
-public class MessageTemplateDO {
+@TableName("notify_task")
+public class NotificationTaskDO {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
@@ -17,8 +17,8 @@ public class MessageTemplateDO {
     @Version
     private Integer version;
 
-    @TableLogic
-    private Integer deleted;
+    // @TableLogic
+    // private Integer deleted;
 
     private LocalDateTime createdAt;
 
@@ -26,15 +26,19 @@ public class MessageTemplateDO {
 
     private Long applicationId;
 
-    private String templateCode;
+    private String requestId;
 
-    private String templateName;
+    private Long templateId;
 
     private String channelType;
 
-    private String templateContent;
+    private String taskStatus;
 
-    private String variableSchema;
+    private LocalDateTime scheduleTime;
 
-    private Integer status;
+    private Integer totalCount;
+
+    private Integer successCount;
+
+    private Integer failedCount;
 }

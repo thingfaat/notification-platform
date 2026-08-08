@@ -5,15 +5,24 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-@TableName("notify_channel_account")
 @Data
+@TableName("notify_channel_account")
 public class ChannelAccountDO {
-
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     @TableField(fill = FieldFill.INSERT)
     private Long tenantId;
+
+    @Version
+    private Integer version;
+
+    @TableLogic
+    private Integer deleted;
+
+    private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
 
     private Long applicationId;
 
@@ -28,14 +37,4 @@ public class ChannelAccountDO {
     private String configJson;
 
     private Integer status;
-
-    @TableLogic
-    private Integer deleted;
-
-    @Version
-    private Integer version;
-
-    private LocalDateTime createdAt;
-
-    private LocalDateTime updatedAt;
 }

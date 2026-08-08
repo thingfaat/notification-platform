@@ -5,10 +5,9 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-@TableName("sys_tenant")
 @Data
+@TableName("sys_tenant")
 public class TenantDO {
-
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
