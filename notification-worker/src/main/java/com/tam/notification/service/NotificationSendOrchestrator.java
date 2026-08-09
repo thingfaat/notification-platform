@@ -21,6 +21,8 @@ public class NotificationSendOrchestrator {
     private final MessageSendTransactionService transactionService;
     // 通道发送路由
     private final ChannelSenderRouter channelSenderRouter;
+    // 渠道限流服务
+    private final NotificationRateLimitService rateLimitService;
 
     @Value("${notification.mq.consumer-group}")
     private String consumerGroup;
@@ -31,6 +33,14 @@ public class NotificationSendOrchestrator {
      * @param event
      */
     public void send(NotificationSendEvent event) {
+        /**
+         * 限流必须在prepare之前
+         * 被限流时不进入SENDING，也不创建SendRecord
+         */
+        if (!rateLimitService.allowOrDefer(event)) {
+            return;
+        }
+
         Optional<PreparedSend> optional = transactionService.prepare(event, consumerGroup);
 
         // mq重复投递，但是event已经完整执行

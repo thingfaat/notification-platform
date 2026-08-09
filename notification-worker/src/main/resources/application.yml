@@ -39,6 +39,12 @@ notification:
   retry:
     scan-interval-ms: 1000
     batch-size: 100
+  rate-limit:
+    capacity: 10
+    refill-tokens-per-second: 5
+    bucket-ttl: 10m
+    decision-ttl: 1h
+    fail-open: true
 
 management:
   endpoints:

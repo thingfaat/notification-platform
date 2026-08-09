@@ -204,6 +204,27 @@ public class MessageSendTransactionService {
         }
     }
 
+    @Transactional
+    public void deferRateLimited(
+            NotificationSendEvent event,
+            String consumerGroup,
+            long retryAfterMillis
+    ) {
+        boolean firstFinish = consumeRecordRepository.tryCreate(event.tenantId(), consumerGroup, event.eventId(), event.messageId());
+        if (!firstFinish) {
+            return;
+        }
+
+        NotificationMessage message = messageRepository.findById(event.messageId()).orElseThrow(() -> new IllegalStateException("Message不存在：" + event.messageId()));
+        if (message.getMessageStatus() != MessageStatus.QUEUED) {
+            throw new IllegalStateException("完成发送时Message状态异常：" + message.getMessageStatus());
+        }
+
+        message.changeStatus(MessageStatus.THROTTLED);
+        message.setNextRetryTime(LocalDateTime.now().plusNanos(Math.max(1, retryAfterMillis) * 1_000_000));
+        messageRepository.update(message);
+    }
+
     private PreparedSend buildPreparedSend(NotificationMessage message, NotificationTask task, SendRecord sendRecord) {
         return new PreparedSend(sendRecord.getId(), message.getId(), sendRecord.getAttemptNo(), sendRecord.getIdempotencyKey(), task.getChannelType(), message.getReceiver(), message.getRenderedContent());
     }

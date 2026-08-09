@@ -14,7 +14,8 @@ public interface NotificationMessageRepository {
     void update(NotificationMessage message);
 
     /**
-     * RetryScheduler系统级跨租户扫描
+     * 查询到期需要重新入队的消息：
+     * RETRY_WAIT或THROTTLED
      *
      * @param limit
      * @param now
@@ -28,7 +29,7 @@ public interface NotificationMessageRepository {
     boolean requeueIfDue(Long id, LocalDateTime now);
 
     /**
-     * 人工重试使用Cas执行 dead->queue
+     * CAS执行 RETRY_WAIT/THROTTLED → QUEUED
      *
      * @param id
      * @return

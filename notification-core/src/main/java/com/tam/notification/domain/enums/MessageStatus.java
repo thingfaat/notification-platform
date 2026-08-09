@@ -7,6 +7,9 @@ public enum MessageStatus {
 
     CREATED,
     QUEUED,
+
+    THROTTLED,
+
     SENDING,
 
     SENT,

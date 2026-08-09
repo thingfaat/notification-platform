@@ -33,7 +33,9 @@ public interface NotificationMessageMapper extends BaseMapper<NotificationMessag
                 created_at,
                 updated_at
             FROM notify_message
-            WHERE message_status = 'RETRY_WAIT'
+            WHERE message_status in (
+                'RETRY_WAIT', 'THROTTLED'
+            )
               AND next_retry_time <= #{now}
             ORDER BY next_retry_time ASC
             LIMIT #{limit}
@@ -47,7 +49,10 @@ public interface NotificationMessageMapper extends BaseMapper<NotificationMessag
                 next_retry_time = NULL,
                 version = version + 1
             WHERE id = #{id}
-              AND message_status = 'RETRY_WAIT'
+              AND message_status IN (
+                            'RETRY_WAIT',
+                            'THROTTLED'
+                        )
               AND next_retry_time <= #{now}
             """)
     int requeueIfDue(@Param("id") Long id, @Param("now") LocalDateTime now);

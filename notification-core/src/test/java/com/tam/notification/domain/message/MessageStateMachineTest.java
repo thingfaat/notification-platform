@@ -21,4 +21,35 @@ public class MessageStateMachineTest {
     void shouldAllowDeadToQueuedForManualRetry() {
         assertDoesNotThrow(() -> MessageStateMachine.checkTransition(MessageStatus.DEAD, MessageStatus.QUEUED));
     }
+
+    @Test
+    void shouldAllowQueuedToThrottled() {
+        assertDoesNotThrow(() ->
+                MessageStateMachine.checkTransition(
+                        MessageStatus.QUEUED,
+                        MessageStatus.THROTTLED
+                )
+        );
+    }
+
+    @Test
+    void shouldAllowThrottledToQueued() {
+        assertDoesNotThrow(() ->
+                MessageStateMachine.checkTransition(
+                        MessageStatus.THROTTLED,
+                        MessageStatus.QUEUED
+                )
+        );
+    }
+
+    @Test
+    void shouldRejectThrottledToSent() {
+        assertThrows(
+                IllegalStateException.class,
+                () -> MessageStateMachine.checkTransition(
+                        MessageStatus.THROTTLED,
+                        MessageStatus.SENT
+                )
+        );
+    }
 }
