@@ -27,6 +27,10 @@
             <groupId>com.tam.notification</groupId>
             <artifactId>notification-channel</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.tam.notification</groupId>
+            <artifactId>notification-shortlink</artifactId>
+        </dependency>
 
         <!-- Spring Boot Web -->
         <dependency>

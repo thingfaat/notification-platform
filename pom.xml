@@ -155,6 +155,11 @@
                 <artifactId>notification-channel</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.tam.notification</groupId>
+                <artifactId>notification-shortlink</artifactId>
+                <version>${project.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
