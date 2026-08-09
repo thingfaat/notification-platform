@@ -47,7 +47,7 @@ public class ShortLinkService {
 
         final var shortLink = new ShortLink();
         shortLink.setApplicationId(command.applicationId());
-        shortLink.setOriginalUrl(command.originalUrl());
+        shortLink.setOriginalUrl(command.originalUrl().trim());
         shortLink.setExpireAt(command.expireAt());
         shortLink.setStatus(ShortLinkStatus.ACTIVE);
 

@@ -20,7 +20,7 @@ public class ShortLinkMappingRepositoryImpl implements ShortLinkMappingRepositor
         final var data = new ShortLinkMappingDO();
 
         data.setId(IdWorker.getId());
-        data.setTenantId(TenantContext.getTenantId());
+        data.setTenantId(TenantContext.requireTenantId());
         data.setShortLinkId(mapping.getShortLinkId());
         data.setShortCode(mapping.getShortCode());
 

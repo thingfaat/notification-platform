@@ -15,15 +15,10 @@ public class TenantContext {
     }
 
     public static Long requireTenantId() {
-
         Long tenantId = CONTEXT.get();
-
         if (tenantId == null) {
-            throw new IllegalStateException(
-                    "Tenant context is missing"
-            );
+            throw new IllegalStateException("Tenant context is missing");
         }
-
         return tenantId;
     }
 

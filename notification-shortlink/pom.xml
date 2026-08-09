@@ -23,10 +23,6 @@
             <groupId>com.tam.notification</groupId>
             <artifactId>notification-infrastructure</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.tam.notification</groupId>
-            <artifactId>notification-shortlink</artifactId>
-        </dependency>
 
         <!-- Lombok -->
         <dependency>
