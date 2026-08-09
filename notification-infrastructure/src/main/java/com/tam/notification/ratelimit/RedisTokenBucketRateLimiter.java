@@ -158,7 +158,7 @@ public class RedisTokenBucketRateLimiter implements RateLimiter {
                 String.valueOf(properties.getDecisionTtl().toMillis())
         );
 
-        if (result.size() < 3) {
+        if (result == null || result.size() < 3) {
             throw new IllegalStateException("redis限流脚本返回结果异常");
         }
 

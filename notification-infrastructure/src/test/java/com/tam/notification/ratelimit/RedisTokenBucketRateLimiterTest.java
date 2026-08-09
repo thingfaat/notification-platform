@@ -62,9 +62,10 @@ public class RedisTokenBucketRateLimiterTest {
 
     @Test
     void shouldLimitAfterCapacityExhausted() {
-        RateLimitDecision first = rateLimiter.tryAcquire(request("event-1"));
-        RateLimitDecision second = rateLimiter.tryAcquire(request("event-2"));
-        RateLimitDecision third = rateLimiter.tryAcquire(request("event-3"));
+        final var tenantId = 90001L;
+        RateLimitDecision first = rateLimiter.tryAcquire(request(tenantId, "event-1"));
+        RateLimitDecision second = rateLimiter.tryAcquire(request(tenantId, "event-2"));
+        RateLimitDecision third = rateLimiter.tryAcquire(request(tenantId, "event-3"));
 
         assertTrue(first.allowed());
         assertTrue(second.allowed());
@@ -74,17 +75,18 @@ public class RedisTokenBucketRateLimiterTest {
 
     @Test
     void sameEventShouldNotConsumeTokenTwice() {
-        RateLimitDecision first = rateLimiter.tryAcquire(request("same-event"));
-        RateLimitDecision duplicate = rateLimiter.tryAcquire(request("same-event"));
+        final var tenantId = 90002L;
+        RateLimitDecision first = rateLimiter.tryAcquire(request(tenantId, "same-event"));
+        RateLimitDecision duplicate = rateLimiter.tryAcquire(request(tenantId, "same-event"));
 
         assertTrue(first.allowed());
         assertTrue(duplicate.allowed());
     }
 
-    private static RateLimitRequest request(String eventId) {
+    private static RateLimitRequest request(long tenantId, String eventId) {
         return RateLimitRequest.oneToken(
                 eventId,
-                90001L,
+                tenantId,
                 80001L,
                 ChannelType.SMS
         );
