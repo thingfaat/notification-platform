@@ -11,7 +11,9 @@
     <packaging>jar</packaging>
 
     <name>notification-channel</name>
-    <description>渠道适配器层：定义 ChannelSender 接口并实现 MockSmsChannelSender、MockEmailChannelSender、InAppChannelSender</description>
+    <description>渠道适配器层：定义 ChannelSender 接口并实现
+        MockSmsChannelSender、MockEmailChannelSender、InAppChannelSender
+    </description>
 
     <dependencies>
         <!-- Internal -->
@@ -32,6 +34,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <!-- spring 容器上下文 -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
         </dependency>
     </dependencies>
 </project>

@@ -97,6 +97,19 @@ services:
     networks:
       - notification-network
 
+  dashboard:
+    image: apacherocketmq/rocketmq-dashboard:latest
+    container_name: notification-rmq-dashboard
+    restart: unless-stopped
+    depends_on:
+      - namesrv
+    environment:
+      JAVA_OPTS: "-Drocketmq.namesrv.addr=namesrv:9876 -Dcom.rocketmq.sendMessageWithVIPChannel=false"
+    ports:
+      - "6060:8082"
+    networks:
+      - notification-network
+
 volumes:
   mysql-data:
   redis-data:

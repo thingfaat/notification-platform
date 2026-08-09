@@ -1,6 +1,7 @@
 package com.tam.notification.persistence.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.tam.notification.domain.outbox.ConsumeRecordRepository;
 import com.tam.notification.persistence.entity.ConsumeRecordDO;
 import com.tam.notification.persistence.mapper.ConsumeRecordMapper;
@@ -12,6 +13,16 @@ import org.springframework.stereotype.Repository;
 public class ConsumeRecordRepositoryImpl implements ConsumeRecordRepository {
 
     private final ConsumeRecordMapper consumeRecordMapper;
+
+    @Override
+    public boolean exists(final Long tenantId, final String consumerGroup, final String eventId) {
+        Long count = consumeRecordMapper.selectCount(Wrappers.<ConsumeRecordDO>lambdaQuery()
+                .eq(ConsumeRecordDO::getTenantId, tenantId)
+                .eq(ConsumeRecordDO::getConsumerGroup, consumerGroup)
+                .eq(ConsumeRecordDO::getEventId, eventId)
+        );
+        return count > 0;
+    }
 
     @Override
     public boolean tryCreate(final Long tenantId, final String consumerGroup, final String eventId, final Long messageId) {

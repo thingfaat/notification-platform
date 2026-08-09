@@ -33,6 +33,11 @@ notification:
   mq:
     topic: notification-send-topic
     consumer-group: notification-worker-group
+  send:
+    max-attempts: 3 # 包括首次发送，总共三次
+  retry:
+    scan-interval-ms: 1000
+    batch-size: 100
 
 management:
   endpoints:

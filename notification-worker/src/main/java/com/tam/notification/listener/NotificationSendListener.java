@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tam.notification.common.tenant.TenantContext;
 import com.tam.notification.common.trace.TraceContext;
 import com.tam.notification.domain.outbox.NotificationSendEvent;
-import com.tam.notification.service.NotificationConsumeService;
+import com.tam.notification.service.NotificationSendOrchestrator;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.MessageModel;
@@ -15,10 +15,14 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-@RocketMQMessageListener(topic = "${notification.mq.topic}", consumerGroup = "${notification.mq.consumer-group}", messageModel = MessageModel.CLUSTERING, consumeMode = ConsumeMode.CONCURRENTLY, maxReconsumeTimes = 3)
+@RocketMQMessageListener(topic = "${notification.mq.topic}",
+        consumerGroup = "${notification.mq.consumer-group}",
+        messageModel = MessageModel.CLUSTERING,
+        consumeMode = ConsumeMode.CONCURRENTLY,
+        maxReconsumeTimes = 3)
 public class NotificationSendListener implements RocketMQListener<String> {
     private final ObjectMapper objectMapper;
-    private final NotificationConsumeService consumeService;
+    private final NotificationSendOrchestrator sendOrchestrator;
 
     @Override
     public void onMessage(final String payload) {
@@ -28,7 +32,7 @@ public class NotificationSendListener implements RocketMQListener<String> {
             if (event.traceId() != null) {
                 TraceContext.setTraceId(event.traceId());
             }
-            consumeService.consume(event);
+            sendOrchestrator.send(event);
         } finally {
             // mq消费者线程会复用，两个都必须清空
             TenantContext.clear();

@@ -12,6 +12,7 @@ import com.tam.notification.persistence.mapper.NotificationMessageMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,6 +58,19 @@ public class NotificationMessageRepositoryImpl implements NotificationMessageRep
         if (message.getVersion() != null) {
             message.setVersion(message.getVersion() + 1);
         }
+    }
+
+    @Override
+    public List<NotificationMessage> findRetryableAcrossTenants(final int limit, final LocalDateTime now) {
+        return messageMapper.selectRetryableAcrossTenants(limit, now)
+                .stream()
+                .map(this::toDomain)
+                .toList();
+    }
+
+    @Override
+    public boolean requeueIfDue(final Long id, final LocalDateTime now) {
+        return messageMapper.requeueIfDue(id, now) == 1;
     }
 
     private NotificationMessageDO toDO(NotificationMessage message) {
