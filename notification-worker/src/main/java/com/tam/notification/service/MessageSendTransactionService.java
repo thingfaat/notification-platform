@@ -90,8 +90,8 @@ public class MessageSendTransactionService {
      */
     @Transactional
     public void finishSuccess(NotificationSendEvent event, String consumerGroup, PreparedSend prepared, ChannelSendResult result) {
-        boolean firstFirsh = consumeRecordRepository.tryCreate(event.tenantId(), consumerGroup, event.eventId(), event.messageId());
-        if (!firstFirsh) {
+        boolean firstFinish = consumeRecordRepository.tryCreate(event.tenantId(), consumerGroup, event.eventId(), event.messageId());
+        if (!firstFinish) {
             return;
         }
 
@@ -122,8 +122,8 @@ public class MessageSendTransactionService {
      */
     @Transactional
     public void finishFailure(NotificationSendEvent event, String consumerGroup, PreparedSend prepared, ChannelSendResult result) {
-        boolean firstFirsh = consumeRecordRepository.tryCreate(event.tenantId(), consumerGroup, event.eventId(), event.messageId());
-        if (!firstFirsh) {
+        boolean firstFinish = consumeRecordRepository.tryCreate(event.tenantId(), consumerGroup, event.eventId(), event.messageId());
+        if (!firstFinish) {
             return;
         }
 

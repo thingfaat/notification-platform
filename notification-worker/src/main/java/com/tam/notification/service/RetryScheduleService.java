@@ -37,7 +37,7 @@ public class RetryScheduleService {
     public boolean requeue(Long messageId) {
         LocalDateTime now = LocalDateTime.now();
 
-        // 两个worker可能同时扫描到，cas保证只有其中一个 RETRY_WAIT -> QUQUED
+        // 两个worker可能同时扫描到，cas保证只有其中一个 RETRY_WAIT -> QUEUED
         boolean success = messageRepository.requeueIfDue(messageId, now);
         if (!success) {
             return false;
