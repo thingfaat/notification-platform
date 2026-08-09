@@ -51,4 +51,15 @@ public interface NotificationMessageMapper extends BaseMapper<NotificationMessag
               AND next_retry_time <= #{now}
             """)
     int requeueIfDue(@Param("id") Long id, @Param("now") LocalDateTime now);
+
+    @Update("""
+            UPDATE notify_message
+            SET
+                message_status = 'QUEUED',
+                next_retry_time = NULL,
+                version = version + 1
+            WHERE id = #{id}
+              AND message_status = 'DEAD'
+            """)
+    int requeueDead(@Param("id") Long id);
 }

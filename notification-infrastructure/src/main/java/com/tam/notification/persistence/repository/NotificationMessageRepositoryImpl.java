@@ -73,6 +73,11 @@ public class NotificationMessageRepositoryImpl implements NotificationMessageRep
         return messageMapper.requeueIfDue(id, now) == 1;
     }
 
+    @Override
+    public boolean requeueDead(final Long id) {
+        return messageMapper.requeueDead(id) == 1;
+    }
+
     private NotificationMessageDO toDO(NotificationMessage message) {
         NotificationMessageDO data = new NotificationMessageDO();
         data.setId(message.getId());

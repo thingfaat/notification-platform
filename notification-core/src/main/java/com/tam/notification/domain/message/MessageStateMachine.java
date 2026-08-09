@@ -11,7 +11,10 @@ public final class MessageStateMachine {
             MessageStatus.QUEUED, Set.of(MessageStatus.SENDING, MessageStatus.CANCELLED),
             MessageStatus.SENDING, Set.of(MessageStatus.SENT, MessageStatus.RETRY_WAIT, MessageStatus.DEAD),
             MessageStatus.RETRY_WAIT, Set.of(MessageStatus.QUEUED, MessageStatus.DEAD),
-            MessageStatus.SENT, Set.of(MessageStatus.DELIVERED, MessageStatus.DELIVERY_FAILED)
+            MessageStatus.SENT, Set.of(MessageStatus.DELIVERED, MessageStatus.DELIVERY_FAILED),
+
+            // 人工重试，支持重新入队
+            MessageStatus.DEAD, Set.of(MessageStatus.QUEUED)
     );
 
     private MessageStateMachine() {

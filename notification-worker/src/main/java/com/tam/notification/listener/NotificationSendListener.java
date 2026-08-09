@@ -7,25 +7,30 @@ import com.tam.notification.common.trace.TraceContext;
 import com.tam.notification.domain.outbox.NotificationSendEvent;
 import com.tam.notification.service.NotificationSendOrchestrator;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.MessageModel;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
-@RocketMQMessageListener(topic = "${notification.mq.topic}",
+@RocketMQMessageListener(
+        topic = "${notification.mq.topic}",
         consumerGroup = "${notification.mq.consumer-group}",
         messageModel = MessageModel.CLUSTERING,
         consumeMode = ConsumeMode.CONCURRENTLY,
-        maxReconsumeTimes = 3)
+        maxReconsumeTimes = 3
+)
 public class NotificationSendListener implements RocketMQListener<String> {
     private final ObjectMapper objectMapper;
     private final NotificationSendOrchestrator sendOrchestrator;
 
     @Override
     public void onMessage(final String payload) {
+        log.info("接收到消息: {}", payload);
         NotificationSendEvent event = deserialize(payload);
         try {
             TenantContext.setTenantId(event.tenantId());

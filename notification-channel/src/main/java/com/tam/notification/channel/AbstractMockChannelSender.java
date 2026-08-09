@@ -27,7 +27,14 @@ public abstract class AbstractMockChannelSender implements ChannelSender {
 
     @Override
     public ChannelSendResult send(final ChannelSendCommand command) {
-        /**
+        /*
+         * 模拟”模拟渠道持续不可用“，模拟渠道持续不可用
+         */
+        if (command.receiver().startsWith("exception-always:")) {
+            throw new IllegalStateException("模拟渠道持续不可用");
+        }
+
+        /*
          * 模拟”调用结果未知“
          * 这里故意抛出异常，让RocketMQ重新投递同一个event
          */
@@ -35,7 +42,7 @@ public abstract class AbstractMockChannelSender implements ChannelSender {
             throw new IllegalStateException("模拟渠道调用结果未知");
         }
 
-        /**
+        /*
          * 同一个发送的attempt始终返回同一结果
          */
         return resultCache.computeIfAbsent(command.idempotencyKey(), key -> doSend(command));

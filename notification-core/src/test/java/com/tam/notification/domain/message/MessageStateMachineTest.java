@@ -16,4 +16,9 @@ public class MessageStateMachineTest {
     void shouldRejectCreatedToDelivered() {
         assertThrows(IllegalStateException.class, () -> MessageStateMachine.checkTransition(MessageStatus.CREATED, MessageStatus.DELIVERED));
     }
+
+    @Test
+    void shouldAllowDeadToQueuedForManualRetry() {
+        assertDoesNotThrow(() -> MessageStateMachine.checkTransition(MessageStatus.DEAD, MessageStatus.QUEUED));
+    }
 }

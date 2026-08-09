@@ -25,6 +25,11 @@ public class NotificationSendOrchestrator {
     @Value("${notification.mq.consumer-group}")
     private String consumerGroup;
 
+    /**
+     * 发送消息，组织本地事务和渠道发送，
+     *
+     * @param event
+     */
     public void send(NotificationSendEvent event) {
         Optional<PreparedSend> optional = transactionService.prepare(event, consumerGroup);
 
@@ -33,10 +38,11 @@ public class NotificationSendOrchestrator {
             return;
         }
 
+        // 获取发送通道
         PreparedSend prepared = optional.get();
         final var sender = channelSenderRouter.route(prepared.channelType());
 
-        // 注意，不catch这里的未知异常，如果调用渠道出现timeout、connection reset等无法确认结果的未知异常，直接抛给rocketmq，rocketmq重新投递同一个event，prepare()会恢复原PROCESSING attempt
+        // 注意，不catch这里的未知异常，如果调用渠道出现timeout、connection reset等无法确认结果的未知异常，直接抛给rocket mq，rocket mq重新投递同一个event，prepare()会恢复原PROCESSING attempt
         // 因而使用同一个idempotencyKey
         ChannelSendResult result = sender.send(new ChannelSendCommand(prepared.messageId(), prepared.attemptNo(), prepared.idempotencyKey(), prepared.channelType(), prepared.receiver(), prepared.content()));
 

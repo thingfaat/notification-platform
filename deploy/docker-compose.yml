@@ -98,7 +98,7 @@ services:
       - notification-network
 
   dashboard:
-    image: apacherocketmq/rocketmq-dashboard:latest
+    image: apacherocketmq/rocketmq-dashboard:2.0.1
     container_name: notification-rmq-dashboard
     restart: unless-stopped
     depends_on:
@@ -106,7 +106,7 @@ services:
     environment:
       JAVA_OPTS: "-Drocketmq.namesrv.addr=namesrv:9876 -Dcom.rocketmq.sendMessageWithVIPChannel=false"
     ports:
-      - "6060:8082"
+      - "6060:8080"
     networks:
       - notification-network
 
@@ -118,4 +118,3 @@ volumes:
 networks:
   notification-network:
     driver: bridge
-

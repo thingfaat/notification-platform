@@ -21,6 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
+/**
+ * 发送消息事务
+ */
 @Service
 @RequiredArgsConstructor
 public class MessageSendTransactionService {
@@ -150,6 +153,54 @@ public class MessageSendTransactionService {
         boolean success = sendRecordRepository.markFailed(prepared.sendRecordId(), result.errorCode(), result.errorMessage(), LocalDateTime.now());
         if (!success) {
             throw new IllegalStateException("完成发送时更新发送记录异常");
+        }
+    }
+
+    /**
+     * 死信队列处理
+     *
+     * @param event
+     * @param dlqConsumerGroup
+     */
+    @Transactional
+    public void finishDeadLetter(NotificationSendEvent event, String dlqConsumerGroup) {
+        final var firstConsume = consumeRecordRepository.tryCreate(event.tenantId(), dlqConsumerGroup, event.eventId(), event.messageId());
+        if (!firstConsume) {
+            return;
+        }
+
+        NotificationMessage message = messageRepository.findById(event.messageId()).orElseThrow(() -> new IllegalStateException("Message不存在：" + event.messageId()));
+
+        // 如果正常Consumer已经成功完成，DLQ消息只记录消费，不在倒退状态
+        if (message.getMessageStatus() != MessageStatus.SENDING) {
+            return;
+        }
+
+        int attemptNo = message.getRetryCount() + 1;
+        final var sendRecord = sendRecordRepository.findByMessageIdAndAttemptNo(message.getId(), attemptNo).orElseThrow(() -> new IllegalStateException("DLQ消息不存在PROCESSING发送记录：" + message.getId()));
+
+        if (sendRecord.getSendStatus() != SendRecordStatus.PROCESSING) {
+            throw new IllegalStateException("DLQ发送记录状态异常：" + sendRecord.getId());
+        }
+        String failureCode = "MQ_RECONSUME_EXHAUSTED";
+        String failureReason = "RocketMQ消费重试耗尽，消息进入DLQ";
+
+        message.setRetryCount(message.getRetryCount() + 1);
+        message.setFailureCode(failureCode);
+        message.setFailureReason(failureReason);
+        message.setNextRetryTime(null);
+        message.changeStatus(MessageStatus.DEAD);
+        messageRepository.update(message);
+
+        boolean recordUpdated = sendRecordRepository.markFailed(
+                sendRecord.getId(),
+                failureCode,
+                failureReason,
+                LocalDateTime.now()
+        );
+
+        if (!recordUpdated) {
+            throw new IllegalStateException("DLQ发送记录更新失败：" + sendRecord.getId());
         }
     }
 

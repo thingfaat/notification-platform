@@ -26,4 +26,12 @@ public interface NotificationMessageRepository {
      * CAS执行 RETRY_WAIT → QUEUED。
      */
     boolean requeueIfDue(Long id, LocalDateTime now);
+
+    /**
+     * 人工重试使用Cas执行 dead->queue
+     *
+     * @param id
+     * @return
+     */
+    boolean requeueDead(Long id);
 }
