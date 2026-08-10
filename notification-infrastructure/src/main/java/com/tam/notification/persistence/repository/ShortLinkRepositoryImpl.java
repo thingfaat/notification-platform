@@ -1,11 +1,14 @@
 package com.tam.notification.persistence.repository;
 
+import com.tam.notification.domain.enums.ShortLinkStatus;
 import com.tam.notification.domain.shortlink.ShortLink;
+import com.tam.notification.domain.shortlink.ShortLinkRepository;
 import com.tam.notification.persistence.entity.ShortLinkDO;
 import com.tam.notification.persistence.mapper.ShortLinkMapper;
-import com.tam.notification.domain.shortlink.ShortLinkRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -26,6 +29,14 @@ public class ShortLinkRepositoryImpl implements ShortLinkRepository {
         return shortLink;
     }
 
+    @Override
+    public Optional<ShortLink> findById(final Long id) {
+        final var data = shortLinkMapper.selectById(id);
+
+        return Optional.ofNullable(data)
+                .map(this::toDomain);
+    }
+
     private ShortLinkDO toDO(ShortLink shortLink) {
         ShortLinkDO data = new ShortLinkDO();
 
@@ -41,5 +52,23 @@ public class ShortLinkRepositoryImpl implements ShortLinkRepository {
         }
 
         return data;
+    }
+
+    private ShortLink toDomain(ShortLinkDO shortLinkDO) {
+        final var shortLink = new ShortLink();
+
+        shortLink.setId(shortLinkDO.getId());
+        shortLink.setTenantId(shortLinkDO.getTenantId());
+        shortLink.setApplicationId(shortLinkDO.getApplicationId());
+        shortLink.setOriginalUrl(shortLinkDO.getOriginalUrl());
+        shortLink.setExpireAt(shortLinkDO.getExpireAt());
+        shortLink.setCreatedAt(shortLinkDO.getCreatedAt());
+        shortLink.setUpdatedAt(shortLinkDO.getUpdatedAt());
+
+        if (shortLinkDO.getStatus() != null) {
+            shortLink.setStatus(ShortLinkStatus.valueOf(shortLinkDO.getStatus()));
+        }
+
+        return shortLink;
     }
 }
