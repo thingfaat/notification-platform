@@ -20,8 +20,12 @@
             <artifactId>notification-core</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.tam.notification</groupId>
-            <artifactId>notification-infrastructure</artifactId>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
         </dependency>
 
         <!-- Lombok -->

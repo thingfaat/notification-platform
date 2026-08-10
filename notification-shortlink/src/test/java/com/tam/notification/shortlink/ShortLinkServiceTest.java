@@ -9,7 +9,7 @@ import com.tam.notification.domain.shortlink.ShortLinkMappingRepository;
 import com.tam.notification.domain.shortlink.ShortLinkRepository;
 import com.tam.notification.shortlink.dto.CreateShortLinkCommand;
 import com.tam.notification.shortlink.dto.CreatedShortLink;
-import com.tam.notification.shortlink.serivice.ShortLinkService;
+import com.tam.notification.shortlink.service.ShortLinkService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;

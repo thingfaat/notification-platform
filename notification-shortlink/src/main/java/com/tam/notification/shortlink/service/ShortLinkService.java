@@ -1,4 +1,4 @@
-package com.tam.notification.shortlink.serivice;
+package com.tam.notification.shortlink.service;
 
 import com.tam.notification.common.exception.BusinessException;
 import com.tam.notification.common.exception.CommonErrorCode;
