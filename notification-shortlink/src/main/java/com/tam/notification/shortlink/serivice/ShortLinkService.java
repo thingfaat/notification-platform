@@ -1,14 +1,16 @@
-package com.tam.notification.shortlink.service;
+package com.tam.notification.shortlink.serivice;
 
 import com.tam.notification.common.exception.BusinessException;
 import com.tam.notification.common.exception.CommonErrorCode;
 import com.tam.notification.domain.application.ApplicationRepository;
-import com.tam.notification.shortlink.algorithm.ShortCodeGenerator;
-import com.tam.notification.shortlink.domain.ShortLink;
-import com.tam.notification.shortlink.domain.ShortLinkMapping;
-import com.tam.notification.shortlink.domain.ShortLinkStatus;
-import com.tam.notification.shortlink.repository.ShortLinkMappingRepository;
-import com.tam.notification.shortlink.repository.ShortLinkRepository;
+import com.tam.notification.domain.shortlink.ShortCodeGenerator;
+import com.tam.notification.domain.shortlink.ShortLink;
+import com.tam.notification.domain.shortlink.ShortLinkMapping;
+import com.tam.notification.domain.enums.ShortLinkStatus;
+import com.tam.notification.domain.shortlink.ShortLinkMappingRepository;
+import com.tam.notification.domain.shortlink.ShortLinkRepository;
+import com.tam.notification.shortlink.dto.CreateShortLinkCommand;
+import com.tam.notification.shortlink.dto.CreatedShortLink;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

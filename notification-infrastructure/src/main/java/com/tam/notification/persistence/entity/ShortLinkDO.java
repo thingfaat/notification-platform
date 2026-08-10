@@ -1,4 +1,4 @@
-package com.tam.notification.shortlink.persistence.entity;
+package com.tam.notification.persistence.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;

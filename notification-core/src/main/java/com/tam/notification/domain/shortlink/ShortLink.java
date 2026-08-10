@@ -1,5 +1,6 @@
-package com.tam.notification.shortlink.domain;
+package com.tam.notification.domain.shortlink;
 
+import com.tam.notification.domain.enums.ShortLinkStatus;
 import lombok.Data;
 
 import java.time.LocalDateTime;

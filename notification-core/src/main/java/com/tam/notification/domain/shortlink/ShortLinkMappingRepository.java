@@ -1,6 +1,4 @@
-package com.tam.notification.shortlink.repository;
-
-import com.tam.notification.shortlink.domain.ShortLinkMapping;
+package com.tam.notification.domain.shortlink;
 
 public interface ShortLinkMappingRepository {
     /**

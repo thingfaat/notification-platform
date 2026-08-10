@@ -1,5 +1,6 @@
 package com.tam.notification.shortlink.algorithm;
 
+import com.tam.notification.domain.shortlink.ShortCodeGenerator;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;

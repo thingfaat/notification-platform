@@ -1,4 +1,4 @@
-package com.tam.notification.shortlink.domain;
+package com.tam.notification.domain.shortlink;
 
 import lombok.Data;
 

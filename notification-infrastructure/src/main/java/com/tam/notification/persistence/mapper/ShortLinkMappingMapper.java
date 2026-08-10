@@ -1,7 +1,7 @@
-package com.tam.notification.shortlink.persistence.mapper;
+package com.tam.notification.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.tam.notification.shortlink.persistence.entity.ShortLinkMappingDO;
+import com.tam.notification.persistence.entity.ShortLinkMappingDO;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 

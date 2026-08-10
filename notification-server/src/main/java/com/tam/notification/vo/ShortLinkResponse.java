@@ -1,6 +1,6 @@
 package com.tam.notification.vo;
 
-import com.tam.notification.shortlink.service.CreatedShortLink;
+import com.tam.notification.shortlink.dto.CreatedShortLink;
 import lombok.Data;
 
 import java.time.LocalDateTime;

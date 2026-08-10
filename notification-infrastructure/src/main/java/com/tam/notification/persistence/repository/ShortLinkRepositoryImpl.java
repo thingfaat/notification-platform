@@ -1,10 +1,9 @@
-package com.tam.notification.shortlink.persistence.repository;
+package com.tam.notification.persistence.repository;
 
-import com.tam.notification.shortlink.domain.ShortLink;
-import com.tam.notification.shortlink.persistence.entity.ShortLinkDO;
-import com.tam.notification.shortlink.persistence.entity.ShortLinkMappingDO;
-import com.tam.notification.shortlink.persistence.mapper.ShortLinkMapper;
-import com.tam.notification.shortlink.repository.ShortLinkRepository;
+import com.tam.notification.domain.shortlink.ShortLink;
+import com.tam.notification.persistence.entity.ShortLinkDO;
+import com.tam.notification.persistence.mapper.ShortLinkMapper;
+import com.tam.notification.domain.shortlink.ShortLinkRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 

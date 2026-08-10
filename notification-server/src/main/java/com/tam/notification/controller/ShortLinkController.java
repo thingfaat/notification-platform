@@ -2,9 +2,9 @@ package com.tam.notification.controller;
 
 import com.tam.notification.common.web.ApiResponse;
 import com.tam.notification.dto.CreateShortLinkRequest;
-import com.tam.notification.shortlink.service.CreateShortLinkCommand;
-import com.tam.notification.shortlink.service.CreatedShortLink;
-import com.tam.notification.shortlink.service.ShortLinkService;
+import com.tam.notification.shortlink.dto.CreateShortLinkCommand;
+import com.tam.notification.shortlink.dto.CreatedShortLink;
+import com.tam.notification.shortlink.serivice.ShortLinkService;
 import com.tam.notification.vo.ShortLinkResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

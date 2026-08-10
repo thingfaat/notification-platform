@@ -1,4 +1,4 @@
-package com.tam.notification.shortlink.service;
+package com.tam.notification.shortlink.dto;
 
 import java.time.LocalDateTime;
 

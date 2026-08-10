@@ -1,4 +1,4 @@
-package com.tam.notification.shortlink.domain;
+package com.tam.notification.domain.enums;
 
 /**
  * 短链状态

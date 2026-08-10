@@ -1,6 +1,6 @@
-package com.tam.notification.shortlink.service;
+package com.tam.notification.shortlink.dto;
 
-import com.tam.notification.shortlink.domain.ShortLinkStatus;
+import com.tam.notification.domain.enums.ShortLinkStatus;
 
 import java.time.LocalDateTime;
 

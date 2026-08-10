@@ -1,11 +1,11 @@
-package com.tam.notification.shortlink.persistence.repository;
+package com.tam.notification.persistence.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.tam.notification.common.tenant.TenantContext;
-import com.tam.notification.shortlink.domain.ShortLinkMapping;
-import com.tam.notification.shortlink.persistence.entity.ShortLinkMappingDO;
-import com.tam.notification.shortlink.persistence.mapper.ShortLinkMappingMapper;
-import com.tam.notification.shortlink.repository.ShortLinkMappingRepository;
+import com.tam.notification.domain.shortlink.ShortLinkMapping;
+import com.tam.notification.persistence.entity.ShortLinkMappingDO;
+import com.tam.notification.persistence.mapper.ShortLinkMappingMapper;
+import com.tam.notification.domain.shortlink.ShortLinkMappingRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 

@@ -1,4 +1,4 @@
-package com.tam.notification.shortlink.algorithm;
+package com.tam.notification.domain.shortlink;
 
 public interface ShortCodeGenerator {
 
