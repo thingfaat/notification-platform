@@ -27,9 +27,11 @@ public class ShortLinkBloomInitializer implements ApplicationRunner {
     @Override
     public void run(final ApplicationArguments args) throws Exception {
         try {
-            List<String> shortCodes = mappingRepository.findAllShortCodesAcrossTenants();
-            shortLinkProtection.rebuildBloom(shortCodes);
-            log.info("initialize short-link success, count={}", shortCodes.size());
+            if (shortLinkProtection.beginBloomRebuild()) {
+                List<String> shortCodes = mappingRepository.findAllShortCodesAcrossTenants();
+                shortLinkProtection.completeBloomRebuild(shortCodes);
+                log.info("initialize short-link success, count={}", shortCodes.size());
+            }
         } catch (RuntimeException e) {
             // 初始化失败不能阻止应用启动，ready标志不存在时，查询会自动放行数据库
             log.error("initialize short-link bloom filter failed", e);

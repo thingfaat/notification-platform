@@ -67,6 +67,8 @@ public class RedisShortLinkCache implements ShortLinkCache {
 
             final var entry = objectMapper.readValue(payload, ShortLinkCacheEntry.class);
 
+            localCache.put(shortCode, entry);
+
             return Optional.of(entry);
         } catch (JsonProcessingException e) {
             log.warn("short link cache payload is invalid, key={}", shortCode, e);

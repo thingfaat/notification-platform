@@ -27,6 +27,8 @@ public interface ShortLinkProtection {
 
     void addToBloom(String shortCode);
 
-    void rebuildBloom(Collection<String> shortCodes);
+    boolean beginBloomRebuild();
+
+    void completeBloomRebuild(Collection<String> shortCodes);
 }
 

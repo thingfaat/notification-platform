@@ -195,16 +195,30 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
                     shortCode,
                     exception
             );
+            //
+            redisTemplate.delete(BLOOM_READY_KEY);
         }
     }
 
     @Override
-    public void rebuildBloom(final Collection<String> shortCodes) {
+    public boolean beginBloomRebuild() {
         try {
             // ready 不存在时，mightContain 会 fail-open。
             redisTemplate.delete(BLOOM_READY_KEY);
             redisTemplate.delete(BLOOM_BITMAP_KEY);
+            return true;
+        } catch (Exception e) {
+            log.warn(
+                    "clear bloom filter failed",
+                    e
+            );
+            return false;
+        }
+    }
 
+    @Override
+    public void completeBloomRebuild(final Collection<String> shortCodes) {
+        try {
             for (String shortCode : shortCodes) {
                 setBloomBits(shortCode);
             }
