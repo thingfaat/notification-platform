@@ -17,6 +17,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * redis布隆过滤器与负缓存实现
@@ -30,6 +31,15 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
     private static final String BLOOM_BITMAP_KEY = "shortlink:bloom:codes:v1";
     // 布隆过滤器就绪key
     private static final String BLOOM_READY_KEY = "shortlink:bloom:ready:v1";
+
+    /**
+     * 本机是否可以信任 Redis 中的 Bloom Bitmap。
+     * <p>
+     * 启动时默认为 false，只有完整重建成功后才改成 true。
+     */
+    private final AtomicBoolean bloomTrusted = new AtomicBoolean(false);
+
+
     // 布隆过滤器检查脚本
     private static final DefaultRedisScript<Long> CHECK_BITS_SCRIPT = new DefaultRedisScript<>(
             """
@@ -163,6 +173,14 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
 
     @Override
     public boolean mightContain(final String shortCode) {
+        /*
+         * 本机已经知道 Bloom 数据不完整，
+         * 此时必须放行数据库，不能再根据 Bitmap 返回 false。
+         */
+        if (!bloomTrusted.get()) {
+            return true;
+        }
+
         try {
             Long result = redisTemplate.execute(
                     CHECK_BITS_SCRIPT,
@@ -173,7 +191,16 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
                     bloomOffsets(shortCode)
             );
 
-            // Redis 返回异常值时放行数据库，避免误伤合法短链。
+            /*
+             * result == null：
+             * Redis 返回了无法确认的结果，采用 fail-open。
+             *
+             * result == 1：
+             * 短码可能存在，继续查询数据库。
+             *
+             * result == 0：
+             * Bloom 确认不存在，可以拦截。
+             */
             return result == null || result == 1L;
         } catch (RuntimeException exception) {
             log.warn(
@@ -181,6 +208,7 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
                     shortCode,
                     exception
             );
+            // 查询故障只影响性能，不能误伤合法短链。
             return true;
         }
     }
@@ -195,29 +223,70 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
                     shortCode,
                     exception
             );
-            //
+            /*
+             * 某个合法短码没有加入 Bloom，
+             * 整个 Bloom 对“不存在”的判断已经不再可信。
+             */
+            bloomTrusted.set(false);
+
+            /*
+             * 尽量删除 Redis ready 标志，
+             * 通知其他实例也不要相信当前 Bloom。
+             *
+             * 删除失败不能继续向外抛异常。
+             */
+            clearBloomReadySafely();
+        }
+    }
+
+    private void clearBloomReadySafely() {
+        try {
             redisTemplate.delete(BLOOM_READY_KEY);
+        } catch (RuntimeException exception) {
+            /*
+             * Redis 故障期间删除失败是正常降级场景。
+             * bloomTrusted 已经是 false，本机仍然安全。
+             */
+            log.warn(
+                    "clear bloom ready flag failed",
+                    exception
+            );
         }
     }
 
     @Override
     public boolean beginBloomRebuild() {
+        /*
+         * 必须先修改本机状态。
+         * 即使后面的 Redis 操作立即失败，本机也不会相信旧 Bloom。
+         */
+        bloomTrusted.set(false);
+
         try {
-            // ready 不存在时，mightContain 会 fail-open。
+            // ready 不存在时，Redis Lua 脚本也会 fail-open。
             redisTemplate.delete(BLOOM_READY_KEY);
             redisTemplate.delete(BLOOM_BITMAP_KEY);
+
             return true;
-        } catch (Exception e) {
+        } catch (RuntimeException exception) {
             log.warn(
-                    "clear bloom filter failed",
-                    e
+                    "begin bloom filter rebuild failed",
+                    exception
             );
+
+            clearBloomReadySafely();
             return false;
         }
     }
 
     @Override
     public void completeBloomRebuild(final Collection<String> shortCodes) {
+        /*
+         * complete 期间仍处于不可用状态，
+         * 防止并发请求读取尚未构建完成的 Bitmap。
+         */
+        bloomTrusted.set(false);
+
         try {
             for (String shortCode : shortCodes) {
                 setBloomBits(shortCode);
@@ -250,11 +319,14 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
     }
 
     private void setBloomBits(String shortCode) {
-        redisTemplate.execute(
+        Long affectedBits = redisTemplate.execute(
                 SET_BITS_SCRIPT,
                 List.of(BLOOM_BITMAP_KEY),
                 bloomOffsets(shortCode)
         );
+        if (affectedBits == null || affectedBits != bloomHashFunctions) {
+            throw new IllegalStateException("set bloom bits returned unexpected result");
+        }
     }
 
     private String[] bloomOffsets(String shortCode) {
