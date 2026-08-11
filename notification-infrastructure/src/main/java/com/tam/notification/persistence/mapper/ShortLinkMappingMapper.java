@@ -8,6 +8,8 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.List;
+
 @Mapper
 public interface ShortLinkMappingMapper extends BaseMapper<ShortLinkMappingDO> {
 
@@ -43,4 +45,12 @@ public interface ShortLinkMappingMapper extends BaseMapper<ShortLinkMappingDO> {
             limit 1
             """)
     ShortLinkMappingDO selectByShortCodeAcrossTenants(@Param("shortCode") String shortCode);
+
+    @InterceptorIgnore(tenantLine = "1")
+    @Select("""
+            select short_code
+            from short_link_mapping
+            order by id
+            """)
+    List<String> selectAllShortCodesAcrossTenants();
 }

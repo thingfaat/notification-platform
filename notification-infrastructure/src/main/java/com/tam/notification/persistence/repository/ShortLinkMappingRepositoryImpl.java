@@ -9,6 +9,7 @@ import com.tam.notification.persistence.mapper.ShortLinkMappingMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -44,6 +45,11 @@ public class ShortLinkMappingRepositoryImpl implements ShortLinkMappingRepositor
                 .map(this::toDomain);
     }
 
+    @Override
+    public List<String> findAllShortCodesAcrossTenants() {
+        return mappingMapper.selectAllShortCodesAcrossTenants();
+    }
+
     private ShortLinkMapping toDomain(ShortLinkMappingDO shortLinkMappingDO) {
         final var mapping = new ShortLinkMapping();
 
@@ -55,4 +61,6 @@ public class ShortLinkMappingRepositoryImpl implements ShortLinkMappingRepositor
 
         return mapping;
     }
+
+
 }

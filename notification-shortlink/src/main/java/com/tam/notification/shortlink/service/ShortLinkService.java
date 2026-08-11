@@ -3,16 +3,13 @@ package com.tam.notification.shortlink.service;
 import com.tam.notification.common.exception.BusinessException;
 import com.tam.notification.common.exception.CommonErrorCode;
 import com.tam.notification.domain.application.ApplicationRepository;
-import com.tam.notification.domain.shortlink.ShortCodeGenerator;
-import com.tam.notification.domain.shortlink.ShortLink;
-import com.tam.notification.domain.shortlink.ShortLinkMapping;
 import com.tam.notification.domain.enums.ShortLinkStatus;
-import com.tam.notification.domain.shortlink.ShortLinkMappingRepository;
-import com.tam.notification.domain.shortlink.ShortLinkRepository;
+import com.tam.notification.domain.shortlink.*;
 import com.tam.notification.shortlink.dto.CreateShortLinkCommand;
 import com.tam.notification.shortlink.dto.CreatedShortLink;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +32,7 @@ public class ShortLinkService {
     private final ShortLinkRepository shortLinkRepository;
     private final ShortLinkMappingRepository mappingRepository;
     private final ShortCodeGenerator shortCodeGenerator;
+    private final ApplicationEventPublisher eventPublisher;
 
 
     @Transactional
@@ -63,6 +61,8 @@ public class ShortLinkService {
             mapping.setShortCode(shortCode);
 
             if (mappingRepository.trySave(mapping)) {
+                // 发布创建短链成功事件
+                eventPublisher.publishEvent(new ShortLinkCreatedEvent(shortCode));
                 return toResult(shortLink, shortCode);
             }
         }

@@ -2,10 +2,12 @@ package com.tam.notification.shortlink;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.tam.notification.domain.shortlink.ShortLinkCache;
 import com.tam.notification.domain.shortlink.ShortLinkCacheEntry;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -17,13 +19,27 @@ import java.util.Optional;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class RedisShortLinkCache implements ShortLinkCache {
 
     private static final String KEY_PREFIX = "shortlink:redirect:";
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final Cache<String, ShortLinkCacheEntry> localCache;
+
+    public RedisShortLinkCache(
+            StringRedisTemplate redisTemplate,
+            ObjectMapper objectMapper,
+            @Value("${notification.shortlink.hot-cache.max-size:10000}") long maximumSize,
+            @Value("${notification.shortlink.hot-cache.ttl:PT1M}") Duration localTtl
+    ) {
+        this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
+        this.localCache = Caffeine.newBuilder()
+                .maximumSize(maximumSize)
+                .expireAfterWrite(localTtl)
+                .build();
+    }
 
     /**
      * 获取
@@ -34,6 +50,14 @@ public class RedisShortLinkCache implements ShortLinkCache {
     @Override
     public Optional<ShortLinkCacheEntry> get(final String shortCode) {
 
+        final var local = localCache.getIfPresent(shortCode);
+
+        // 本地存在直接返回
+        if (local != null) {
+            return Optional.of(local);
+        }
+
+        // 本地缓存不存在，查询redis缓存
         try {
             final var payload = redisTemplate.opsForValue().get(KEY_PREFIX + shortCode);
 
@@ -67,11 +91,12 @@ public class RedisShortLinkCache implements ShortLinkCache {
             return;
         }
 
-        String key = buildKey(shortCode);
+        // redis异常时，本机热点缓存仍可提供短时间降级能力
+        localCache.put(shortCode, entry);
 
         try {
             String payload = objectMapper.writeValueAsString(entry);
-            redisTemplate.opsForValue().set(key, payload, ttl);
+            redisTemplate.opsForValue().set(buildKey(shortCode), payload, ttl);
         } catch (JsonProcessingException e) {
             log.warn("short link cache payload is invalid, key={}", shortCode, e);
         } catch (RuntimeException e) {
@@ -86,10 +111,10 @@ public class RedisShortLinkCache implements ShortLinkCache {
      */
     @Override
     public void evict(final String shortCode) {
-        String key = buildKey(shortCode);
+        localCache.invalidate(shortCode);
 
         try {
-            redisTemplate.delete(key);
+            redisTemplate.delete(buildKey(shortCode));
         } catch (RuntimeException e) {
             log.warn("short link cache error, key={}", shortCode, e);
         }

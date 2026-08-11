@@ -29,6 +29,7 @@ public class ShortLinkRedirectService {
     private final ShortLinkMappingRepository mappingRepository;
 
     private final ShortLinkRepository shortLinkRepository;
+    private final ShortLinkProtection shortLinkProtection;
 
     @Transactional(readOnly = true)
     public ResolvedShortLink resolve(String shortCode) {
@@ -42,16 +43,40 @@ public class ShortLinkRedirectService {
             return resolveFromCache(shortCode, cached.get(), now);
         }
 
+        Optional<ShortLinkNegativeReason> negative = shortLinkProtection.getNegative(shortCode);
+
+        if (negative.isPresent()) {
+            throw exceptionFor(negative.get());
+        }
+
+        if (!shortLinkProtection.mightContain(shortCode)) {
+            throw cacheNegativeAndCreateException(shortCode, ShortLinkNegativeReason.NOT_FOUND);
+        }
+
         final var mapping = mappingRepository.findByShortCodeAcrossTenants(shortCode)
-                .orElseThrow(ShortLinkNotFoundException::new);
+                .orElseThrow(()-> cacheNegativeAndCreateException(
+                        shortCode,
+                        ShortLinkNegativeReason.NOT_FOUND
+                ));
+
+        if (mapping.getTenantId() == null) {
+            throw cacheNegativeAndCreateException(
+                    shortCode,
+                    ShortLinkNegativeReason.NOT_FOUND
+            );
+        }
 
         ShortLink shortLink = withTenant(
                 mapping.getTenantId(),
-                () -> shortLinkRepository.findById(mapping.getShortLinkId()).orElseThrow(ShortLinkNotFoundException::new));
+                () -> shortLinkRepository.findById(mapping.getShortLinkId()).orElseThrow(()-> cacheNegativeAndCreateException(
+                        shortCode,
+                        ShortLinkNegativeReason.NOT_FOUND
+                )));
 
-        validateAvailable(shortLink, now);
-
+        validateAvailable(shortCode, shortLink, now);
         cache(shortCode, shortLink, now);
+        // 删除负缓存
+        shortLinkProtection.evictNegative(shortCode);
 
         return new ResolvedShortLink(
                 shortCode,
@@ -68,7 +93,10 @@ public class ShortLinkRedirectService {
     ) {
         if (cached.isExpired(now)) {
             shortLinkCache.evict(shortCode);
-            throw new ShortLinkExpiredException();
+            throw cacheNegativeAndCreateException(
+                    shortCode,
+                    ShortLinkNegativeReason.EXPIRED
+            );
         }
 
         return new ResolvedShortLink(
@@ -80,16 +108,38 @@ public class ShortLinkRedirectService {
     }
 
     private void validateAvailable(
+            String shortCode,
             ShortLink shortLink,
             LocalDateTime now
     ) {
         if (shortLink.isExpired(now)) {
-            throw new ShortLinkExpiredException();
+            throw cacheNegativeAndCreateException(
+                    shortCode,
+                    ShortLinkNegativeReason.EXPIRED
+            );
         }
 
         if (shortLink.getStatus() != ShortLinkStatus.ACTIVE) {
-            throw new ShortLinkNotFoundException();
+            throw cacheNegativeAndCreateException(
+                    shortCode,
+                    ShortLinkNegativeReason.NOT_FOUND
+            );
         }
+    }
+
+    private RuntimeException cacheNegativeAndCreateException(
+            String shortCode,
+            ShortLinkNegativeReason reason
+    ) {
+        shortLinkProtection.cacheNegative(shortCode, reason);
+        return exceptionFor(reason);
+    }
+
+    private RuntimeException exceptionFor(ShortLinkNegativeReason reason) {
+        return switch (reason) {
+            case NOT_FOUND -> new ShortLinkNotFoundException();
+            case EXPIRED -> new ShortLinkExpiredException();
+        };
     }
 
     private void cache(

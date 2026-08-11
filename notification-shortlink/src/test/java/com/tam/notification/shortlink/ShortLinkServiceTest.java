@@ -2,11 +2,7 @@ package com.tam.notification.shortlink;
 
 import com.tam.notification.domain.application.Application;
 import com.tam.notification.domain.application.ApplicationRepository;
-import com.tam.notification.domain.shortlink.ShortCodeGenerator;
-import com.tam.notification.domain.shortlink.ShortLink;
-import com.tam.notification.domain.shortlink.ShortLinkMapping;
-import com.tam.notification.domain.shortlink.ShortLinkMappingRepository;
-import com.tam.notification.domain.shortlink.ShortLinkRepository;
+import com.tam.notification.domain.shortlink.*;
 import com.tam.notification.shortlink.dto.CreateShortLinkCommand;
 import com.tam.notification.shortlink.dto.CreatedShortLink;
 import com.tam.notification.shortlink.service.ShortLinkService;
@@ -16,6 +12,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,6 +38,9 @@ public class ShortLinkServiceTest {
 
     @InjectMocks
     private ShortLinkService shortLinkService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @Test
     void shouldRetryWhenFirstShortCodeCollides() {
@@ -91,6 +91,10 @@ public class ShortLinkServiceTest {
         assertEquals(
                 List.of("collision", "aZ8k2LmP"),
                 attemptedCodes
+        );
+
+        verify(eventPublisher).publishEvent(
+                new ShortLinkCreatedEvent("aZ8k2LmP")
         );
     }
 }

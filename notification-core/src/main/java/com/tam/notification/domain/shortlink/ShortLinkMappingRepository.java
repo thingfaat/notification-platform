@@ -1,5 +1,6 @@
 package com.tam.notification.domain.shortlink;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface ShortLinkMappingRepository {
@@ -18,4 +19,11 @@ public interface ShortLinkMappingRepository {
      * @return
      */
     Optional<ShortLinkMapping> findByShortCodeAcrossTenants(String shortCode);
+
+    /**
+     * 仅用于布隆过滤器初始化，不能用于普通租户业务查询
+     *
+     * @return
+     */
+    List<String> findAllShortCodesAcrossTenants();
 }

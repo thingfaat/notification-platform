@@ -37,6 +37,19 @@ notification:
     # PROCESSING超过30秒认为实例可能已经死亡
     claim-timeout-seconds: 30
     max-retry-count: 3
+  shortlink:
+    hot-cache:
+      max-size: 10000
+      ttl: 1m
+
+    negative-cache:
+      ttl: 2m
+      jitter: 30s
+
+    bloom:
+      # 16,777,216 bits，约 2 MiB。
+      bit-size: 16777216
+      hash-functions: 7
 
 management:
   endpoints:

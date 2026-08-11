@@ -11,7 +11,9 @@
     <packaging>jar</packaging>
 
     <name>notification-infrastructure</name>
-    <description>基础设施层：实现 core 定义的接口 —— MyBatis Mapper、Repository、Redis、RocketMQ Producer、Outbox发布器、分布式锁、多租户SQL拦截器</description>
+    <description>基础设施层：实现 core 定义的接口 —— MyBatis Mapper、Repository、Redis、RocketMQ
+        Producer、Outbox发布器、分布式锁、多租户SQL拦截器
+    </description>
 
     <dependencies>
         <!-- Internal -->
@@ -86,6 +88,12 @@
         <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-jsqlparser</artifactId>
+        </dependency>
+
+        <!-- Local hot-key cache -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
         </dependency>
     </dependencies>
 </project>

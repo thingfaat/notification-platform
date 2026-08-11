@@ -5,6 +5,7 @@ import com.tam.notification.domain.enums.ShortLinkStatus;
 import com.tam.notification.domain.shortlink.*;
 import com.tam.notification.shortlink.dto.ResolvedShortLink;
 import com.tam.notification.shortlink.exception.ShortLinkExpiredException;
+import com.tam.notification.shortlink.exception.ShortLinkNotFoundException;
 import com.tam.notification.shortlink.service.ShortLinkRedirectService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,9 @@ public class ShortLinkRedirectServiceTest {
 
     @InjectMocks
     private ShortLinkRedirectService redirectService;
+
+    @Mock
+    private ShortLinkProtection shortLinkProtection;
 
     @AfterEach
     void clearTenantContext() {
@@ -73,6 +77,18 @@ public class ShortLinkRedirectServiceTest {
     void shouldFallbackToDatabaseAndRestoreTenantContext() {
         when(shortLinkCache.get(SHORT_CODE))
                 .thenReturn(Optional.empty());
+
+        // 1. 正缓存未命中
+        when(shortLinkCache.get(SHORT_CODE))
+                .thenReturn(Optional.empty());
+
+        // 2. 负缓存也未命中
+        when(shortLinkProtection.getNegative(SHORT_CODE))
+                .thenReturn(Optional.empty());
+
+        // 3. 布隆过滤器认为短码“可能存在”，允许继续查询数据库
+        when(shortLinkProtection.mightContain(SHORT_CODE))
+                .thenReturn(true);
 
         ShortLinkMapping mapping = new ShortLinkMapping();
 
@@ -142,6 +158,18 @@ public class ShortLinkRedirectServiceTest {
         when(shortLinkCache.get(SHORT_CODE))
                 .thenReturn(Optional.empty());
 
+        // 1. 正缓存未命中
+        when(shortLinkCache.get(SHORT_CODE))
+                .thenReturn(Optional.empty());
+
+        // 2. 负缓存未命中
+        when(shortLinkProtection.getNegative(SHORT_CODE))
+                .thenReturn(Optional.empty());
+
+        // 3. 布隆过滤器放行，之后才能从数据库查到过期短链
+        when(shortLinkProtection.mightContain(SHORT_CODE))
+                .thenReturn(true);
+
         ShortLinkMapping mapping = new ShortLinkMapping();
 
         mapping.setTenantId(10001L);
@@ -175,5 +203,115 @@ public class ShortLinkRedirectServiceTest {
                 any(),
                 any()
         );
+    }
+
+    @Test
+    void shouldRejectWhenNegativeCacheHits() {
+        when(shortLinkCache.get(SHORT_CODE))
+                .thenReturn(Optional.empty());
+
+        when(shortLinkProtection.getNegative(SHORT_CODE))
+                .thenReturn(Optional.of(
+                        ShortLinkNegativeReason.NOT_FOUND
+                ));
+
+        assertThrows(
+                ShortLinkNotFoundException.class,
+                () -> redirectService.resolve(SHORT_CODE)
+        );
+
+        verify(shortLinkProtection, never())
+                .mightContain(anyString());
+
+        verifyNoInteractions(
+                mappingRepository,
+                shortLinkRepository
+        );
+    }
+
+    @Test
+    void shouldRejectWhenBloomSaysDefinitelyMissing() {
+        when(shortLinkCache.get(SHORT_CODE))
+                .thenReturn(Optional.empty());
+
+        when(shortLinkProtection.getNegative(SHORT_CODE))
+                .thenReturn(Optional.empty());
+
+        when(shortLinkProtection.mightContain(SHORT_CODE))
+                .thenReturn(false);
+
+        assertThrows(
+                ShortLinkNotFoundException.class,
+                () -> redirectService.resolve(SHORT_CODE)
+        );
+
+        verify(shortLinkProtection).cacheNegative(
+                SHORT_CODE,
+                ShortLinkNegativeReason.NOT_FOUND
+        );
+
+        verifyNoInteractions(
+                mappingRepository,
+                shortLinkRepository
+        );
+    }
+
+    @Test
+    void shouldCacheExpiredReasonWhenCachedEntryExpired() {
+        ShortLinkCacheEntry cached =
+                new ShortLinkCacheEntry(
+                        10001L,
+                        30001L,
+                        "https://example.com/orders/1",
+                        LocalDateTime.now().minusSeconds(1)
+                );
+
+        when(shortLinkCache.get(SHORT_CODE))
+                .thenReturn(Optional.of(cached));
+
+        assertThrows(
+                ShortLinkExpiredException.class,
+                () -> redirectService.resolve(SHORT_CODE)
+        );
+
+        verify(shortLinkCache).evict(SHORT_CODE);
+
+        verify(shortLinkProtection).cacheNegative(
+                SHORT_CODE,
+                ShortLinkNegativeReason.EXPIRED
+        );
+
+        verifyNoInteractions(
+                mappingRepository,
+                shortLinkRepository
+        );
+    }
+
+    @Test
+    void shouldCacheNotFoundWhenDatabaseMisses() {
+        when(shortLinkCache.get(SHORT_CODE))
+                .thenReturn(Optional.empty());
+
+        when(shortLinkProtection.getNegative(SHORT_CODE))
+                .thenReturn(Optional.empty());
+
+        when(shortLinkProtection.mightContain(SHORT_CODE))
+                .thenReturn(true);
+
+        when(mappingRepository
+                .findByShortCodeAcrossTenants(SHORT_CODE))
+                .thenReturn(Optional.empty());
+
+        assertThrows(
+                ShortLinkNotFoundException.class,
+                () -> redirectService.resolve(SHORT_CODE)
+        );
+
+        verify(shortLinkProtection).cacheNegative(
+                SHORT_CODE,
+                ShortLinkNegativeReason.NOT_FOUND
+        );
+
+        verifyNoInteractions(shortLinkRepository);
     }
 }
