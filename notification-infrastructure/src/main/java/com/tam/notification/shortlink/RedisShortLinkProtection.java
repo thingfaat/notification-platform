@@ -297,6 +297,12 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
                     "1"
             );
 
+            /*
+             * Bitmap 和 ready 都成功后，
+             * 才允许本机信任 Bloom。
+             */
+            bloomTrusted.set(true);
+
             log.info(
                     "short-link bloom filter rebuilt, count={}",
                     shortCodes.size()
