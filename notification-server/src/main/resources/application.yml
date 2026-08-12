@@ -51,6 +51,11 @@ notification:
       bit-size: 16777216
       hash-functions: 7
 
+    click:
+      topic: short-link-click-topic
+      send-timeout-ms: 1000
+      visitor-salt: ${SHORT_LINK_VISITOR_SALT:local-development-salt}
+
 management:
   endpoints:
     web:
