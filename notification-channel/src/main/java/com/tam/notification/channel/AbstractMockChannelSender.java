@@ -27,6 +27,38 @@ public abstract class AbstractMockChannelSender implements ChannelSender {
 
     @Override
     public ChannelSendResult send(final ChannelSendCommand command) {
+        final var receiver = command.receiver();
+
+        /*
+         * 指定供应商明确拒绝请求
+         * 示例：provider-retryable:mock-sms-primary:13800138000
+         */
+        if (receiver.startsWith("provider-retryable:" + providerCode() + ":")) {
+            return ChannelSendResult.retryableFailure(
+                    "PROVIDER_UNAVAILABLE",
+                    "模拟指定供应商明确拒绝请求"
+            );
+        }
+
+        /*
+         * 指定供应商调用结果未知。
+         */
+        if (receiver.startsWith("provider-exception:" + providerCode() + ":")) {
+            throw new IllegalStateException("模拟指定供应商调用结果未知");
+        }
+
+        /*
+         * 指定供应商响应缓慢。
+         */
+        if (receiver.startsWith("provider-slow:" + providerCode() + ":")) {
+            try {
+                Thread.sleep(5_000);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("模拟渠道调用被中断", exception);
+            }
+        }
+
         /*
          * 模拟”模拟渠道持续不可用“，模拟渠道持续不可用
          */
@@ -38,7 +70,7 @@ public abstract class AbstractMockChannelSender implements ChannelSender {
          * 模拟”调用结果未知“
          * 这里故意抛出异常，让RocketMQ重新投递同一个event
          */
-        if (command.receiver().startsWith("exception-once:") && exceptionOnceKeys.add(command.idempotencyKey())) {
+        if (receiver.startsWith("exception-once:") && exceptionOnceKeys.add(command.idempotencyKey())) {
             throw new IllegalStateException("模拟渠道调用结果未知");
         }
 

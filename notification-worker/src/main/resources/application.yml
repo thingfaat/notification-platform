@@ -34,11 +34,14 @@ notification:
     topic: notification-send-topic
     consumer-group: notification-worker-group
     dlq-consumer-group: notification-worker-dlq-group
+
   send:
-    max-attempts: 3 # 包括首次发送，总共三次
+    max-attempts: 3
+
   retry:
     scan-interval-ms: 1000
     batch-size: 100
+
   rate-limit:
     capacity: 10
     refill-tokens-per-second: 5
@@ -47,6 +50,16 @@ notification:
     fail-open: true
     daily-quota: 100000
     quota-zone-id: Asia/Shanghai
+
+  channel-resilience:
+    core-pool-size: 2
+    max-pool-size: 4
+    queue-capacity: 100
+    keep-alive: 30s
+    call-timeout: 2s
+    failure-threshold: 3
+    open-duration: 10s
+
   shortlink:
     click:
       topic: short-link-click-topic

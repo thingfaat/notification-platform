@@ -1,11 +1,11 @@
 package com.tam.notification.service;
 
-import com.tam.notification.channel.ChannelSenderRouter;
 import com.tam.notification.domain.channel.ChannelSendCommand;
 import com.tam.notification.domain.channel.ChannelSendResult;
 import com.tam.notification.domain.channel.ChannelSendResultType;
 import com.tam.notification.domain.outbox.NotificationSendEvent;
 import com.tam.notification.model.PreparedSend;
+import com.tam.notification.resilience.ResilientChannelSendService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,8 +19,8 @@ import java.util.Optional;
 public class NotificationSendOrchestrator {
     // 消息发送事务服务
     private final MessageSendTransactionService transactionService;
-    // 通道发送路由
-    private final ChannelSenderRouter channelSenderRouter;
+    // 弹性渠道发送服务
+    private final ResilientChannelSendService channelSendService;
     // 渠道限流服务
     private final NotificationRateLimitService rateLimitService;
 
@@ -50,17 +50,34 @@ public class NotificationSendOrchestrator {
 
         // 获取发送通道
         PreparedSend prepared = optional.get();
-        final var sender = channelSenderRouter.route(prepared.channelType());
+        ChannelSendResult result = channelSendService.send(
+                new ChannelSendCommand(
+                        prepared.messageId(),
+                        prepared.attemptNo(),
+                        prepared.idempotencyKey(),
+                        prepared.channelType(),
+                        prepared.receiver(),
+                        prepared.content()
+                )
+        );
 
-        // 注意，不catch这里的未知异常，如果调用渠道出现timeout、connection reset等无法确认结果的未知异常，直接抛给rocket mq，rocket mq重新投递同一个event，prepare()会恢复原PROCESSING attempt
-        // 因而使用同一个idempotencyKey
-        ChannelSendResult result = sender.send(new ChannelSendCommand(prepared.messageId(), prepared.attemptNo(), prepared.idempotencyKey(), prepared.channelType(), prepared.receiver(), prepared.content()));
-
+        // 发送成功
         if (result.type() == ChannelSendResultType.SUCCESS) {
-            transactionService.finishSuccess(event, consumerGroup, prepared, result);
+            transactionService.finishSuccess(
+                    event,
+                    consumerGroup,
+                    prepared,
+                    result
+            );
+
             return;
         }
 
-        transactionService.finishFailure(event, consumerGroup, prepared, result);
+        transactionService.finishFailure(
+                event,
+                consumerGroup,
+                prepared,
+                result
+        );
     }
 }

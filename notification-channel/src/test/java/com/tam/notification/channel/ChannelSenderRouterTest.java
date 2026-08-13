@@ -5,31 +5,62 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 
-public class ChannelSenderRouterTest {
+class ChannelSenderRouterTest {
 
     @Test
-    void shouldRouteToMatchingSender() {
-        MockSmsChannelSender smsChannelSender = new MockSmsChannelSender();
-        MockEmailChannelSender emailChannelSender = new MockEmailChannelSender();
-        InAppChannelSender inAppChannelSender = new InAppChannelSender();
+    void shouldRouteCandidatesByPriority() {
+        MockSmsChannelSender primary = new MockSmsChannelSender();
 
-        ChannelSenderRouter router = new ChannelSenderRouter(List.of(smsChannelSender, emailChannelSender, inAppChannelSender));
+        BackupMockSmsChannelSender backup = new BackupMockSmsChannelSender();
 
-        assertSame(smsChannelSender, router.route(ChannelType.SMS));
-        assertSame(emailChannelSender, router.route(ChannelType.EMAIL));
-        assertSame(inAppChannelSender, router.route(ChannelType.IN_APP));
+        MockEmailChannelSender email = new MockEmailChannelSender();
+
+        InAppChannelSender inApp = new InAppChannelSender();
+
+        ChannelSenderRouter router = new ChannelSenderRouter(
+                List.of(
+                        backup,
+                        primary,
+                        email,
+                        inApp
+                )
+        );
+
+        assertSame(
+                primary,
+                router.route(ChannelType.SMS)
+        );
+
+        assertEquals(
+                List.of(primary, backup),
+                router.routeCandidates(
+                        ChannelType.SMS
+                )
+        );
+
+        assertSame(
+                email,
+                router.route(ChannelType.EMAIL)
+        );
+
+        assertSame(
+                inApp,
+                router.route(ChannelType.IN_APP)
+        );
     }
 
     @Test
-    void shouldRejectDuplicateSender() {
-        assertThrows(IllegalStateException.class, () ->
-                new ChannelSenderRouter(List.of(
-                        new MockSmsChannelSender(),
-                        new MockSmsChannelSender()
-                ))
+    void shouldRejectDuplicatedProviderRegistration() {
+        assertThrows(
+                IllegalStateException.class,
+                () -> new ChannelSenderRouter(
+                        List.of(
+                                new MockSmsChannelSender(),
+                                new MockSmsChannelSender()
+                        )
+                )
         );
     }
 }

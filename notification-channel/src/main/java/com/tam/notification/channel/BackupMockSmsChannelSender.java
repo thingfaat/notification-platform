@@ -4,23 +4,22 @@ import com.tam.notification.domain.enums.ChannelType;
 import org.springframework.stereotype.Component;
 
 /**
- * 模拟短信渠道
+ * 备用短信渠道
  */
 @Component
-public class MockEmailChannelSender extends AbstractMockChannelSender {
-
+public class BackupMockSmsChannelSender extends AbstractMockChannelSender {
     @Override
     public ChannelType channelType() {
-        return ChannelType.EMAIL;
+        return ChannelType.SMS;
     }
 
     @Override
     public String providerCode() {
-        return "mock-email-primary";
+        return "mock-sms-backup";
     }
 
     @Override
     public int priority() {
-        return 100;
+        return 200;
     }
 }
