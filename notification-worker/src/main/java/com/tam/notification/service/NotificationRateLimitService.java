@@ -35,7 +35,7 @@ public class NotificationRateLimitService {
      */
     public boolean allowOrDefer(NotificationSendEvent event) {
         /**
-         * 已完成事件无需再次扣减令牌，
+         * 已完成事件无需再次扣减令牌和日配额，
          * prepare()稍后会再次检查，以保证事务安全
          */
         if (consumeRecordRepository.exists(event.tenantId(), consumerGroup, event.eventId())) {
@@ -61,15 +61,23 @@ public class NotificationRateLimitService {
             throw e;
         }
         if (decision.allowed()) {
-            log.debug("限流通过，eventId={}, remaining={}", event.eventId(), decision.remainingTokens());
+            log.debug("限流通过，eventId={}，remainingTokens={}，remainingDailyQuota={}",
+                    event.eventId(),
+                    decision.remainingTokens(),
+                    decision.remainingDailyQuota()
+            );
             return true;
         }
 
         transactionService.deferRateLimited(event, consumerGroup, decision.retryAfterMillis());
-        log.info("消息被限流, eventId={}, messageId={}, retryAfterMillis={}",
+        log.info(
+                "消息被限流，eventId={}，messageId={}，reason={}，retryAfterMillis={}，remainingTokens={}，remainingDailyQuota={}",
                 event.eventId(),
                 event.messageId(),
-                decision.retryAfterMillis()
+                decision.reason(),
+                decision.retryAfterMillis(),
+                decision.remainingTokens(),
+                decision.remainingDailyQuota()
         );
 
         return false;
