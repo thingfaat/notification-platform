@@ -221,6 +221,8 @@ public class RedisTokenBucketRateLimiter implements RateLimiter {
             List.class
     );
 
+    private static final String DECISION_KEY_VERSION = "v2";
+
     private final StringRedisTemplate redisTemplate;
     private final RateLimitProperties properties;
 
@@ -314,8 +316,9 @@ public class RedisTokenBucketRateLimiter implements RateLimiter {
      */
     private String buildDecisionKey(RateLimitRequest request) {
         return String.format(
-                "notify:rate:{%d}:decision:%s",
+                "notify:rate:{%d}:decision:%s:%s",
                 request.tenantId(),
+                DECISION_KEY_VERSION,
                 request.eventId()
         );
     }

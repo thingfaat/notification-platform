@@ -238,6 +238,94 @@ public class RedisTokenBucketRateLimiterTest {
         );
     }
 
+    @Test
+    void v2DecisionKeyShouldIgnoreLegacyDecisionCache() {
+        RedisTokenBucketRateLimiter limiter = limiter(
+                2,
+                1,
+                2
+        );
+
+        long tenantId = 90005L;
+        String eventId = "legacy-event";
+
+        /*
+         * 模拟Day 12以前写入的旧版判定缓存。
+         */
+        String legacyDecisionKey = String.format(
+                "notify:rate:{%d}:decision:%s",
+                tenantId,
+                eventId
+        );
+
+        redisTemplate.opsForHash().put(
+                legacyDecisionKey,
+                "allowed",
+                "0"
+        );
+
+        redisTemplate.opsForHash().put(
+                legacyDecisionKey,
+                "retry_after",
+                "1000"
+        );
+
+        redisTemplate.opsForHash().put(
+                legacyDecisionKey,
+                "remaining",
+                "0"
+        );
+
+        redisTemplate.expire(
+                legacyDecisionKey,
+                Duration.ofMinutes(5)
+        );
+
+        /*
+         * 新版限流器不应把旧版Hash当成v2判定结果。
+         * 它应该使用v2 Key重新完成限流判定。
+         */
+        RateLimitDecision decision = limiter.tryAcquire(
+                request(
+                        tenantId,
+                        80001L,
+                        ChannelType.SMS,
+                        eventId
+                )
+        );
+
+        assertTrue(decision.allowed());
+        assertEquals(
+                RateLimitReason.NONE,
+                decision.reason()
+        );
+        assertEquals(
+                1,
+                decision.remainingDailyQuota()
+        );
+
+        String v2DecisionKey = String.format(
+                "notify:rate:{%d}:decision:v2:%s",
+                tenantId,
+                eventId
+        );
+
+        assertTrue(
+                Boolean.TRUE.equals(
+                        redisTemplate.hasKey(v2DecisionKey)
+                )
+        );
+
+        /*
+         * 旧数据不需要主动删除，会按旧TTL自然过期。
+         */
+        assertTrue(
+                Boolean.TRUE.equals(
+                        redisTemplate.hasKey(legacyDecisionKey)
+                )
+        );
+    }
+
     private RedisTokenBucketRateLimiter limiter(
             long capacity,
             double refillRate,
@@ -278,4 +366,6 @@ public class RedisTokenBucketRateLimiterTest {
                 channelType
         );
     }
+
+
 }

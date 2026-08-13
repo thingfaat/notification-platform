@@ -45,6 +45,8 @@ notification:
     bucket-ttl: 10m
     decision-ttl: 1h
     fail-open: true
+    daily-quota: 100000
+    quota-zone-id: Asia/Shanghai
   shortlink:
     click:
       topic: short-link-click-topic
