@@ -39,7 +39,13 @@ public class ResilientChannelSendService {
         ChannelSendResult lastRetryableFailure = null;
 
         for (ChannelSender sender : senderRouter.routeCandidates(command.channelType())) {
-            final var permission = circuitBreaker.tryAcquire(sender.providerCode()); // 获取渠道调用权限
+
+            ChannelCircuitBreaker.CircuitKey key = new ChannelCircuitBreaker.CircuitKey(
+                    sender.channelType(),
+                    sender.providerCode()
+            );
+
+            final var permission = circuitBreaker.tryAcquire(key); // 获取渠道调用权限
             if (!permission.allowed()) { // 熔断
                 if (permission.failoverAllowed()) { // 允许安全切换
                     log.warn("渠道熔断，安全切换备用供应商，providerCode={}， messageId = {}", sender.providerCode(), command.messageId());
@@ -62,9 +68,9 @@ public class ResilientChannelSendService {
             } catch (ChannelResilienceException exception) {
                 // 记录熔断类型
                 if (exception.getType() == ChannelResilienceException.Type.ISOLATION_REJECTED) { // 隔离拒绝
-                    circuitBreaker.recordNeutral(sender.providerCode());
+                    circuitBreaker.recordNeutral(key, permission);
                 } else { // 未知异常
-                    circuitBreaker.recordUnknownFailure(sender.providerCode());
+                    circuitBreaker.recordUnknownFailure(key, permission);
                 }
                 /*
                  * 超时、线程中断和运行时异常都无法确认
@@ -75,12 +81,12 @@ public class ResilientChannelSendService {
                  */
                 throw exception;
             } catch (RuntimeException exception) {
-                circuitBreaker.recordUnknownFailure(sender.providerCode());
+                circuitBreaker.recordUnknownFailure(key, permission);
                 throw exception;
             }
 
             if (result.type() == ChannelSendResultType.RETRYABLE_FAILURE) {
-                circuitBreaker.recordDefinitiveFailure(sender.providerCode());
+                circuitBreaker.recordDefinitiveFailure(key, permission);
 
                 lastRetryableFailure = result;
 
@@ -97,7 +103,7 @@ public class ResilientChannelSendService {
              * SUCCESS和PERMANENT_FAILURE都代表
              * 供应商给出了明确响应，供应商本身可达。
              */
-            circuitBreaker.recordSuccess(sender.providerCode());
+            circuitBreaker.recordSuccess(key, permission);
 
             return result;
         }

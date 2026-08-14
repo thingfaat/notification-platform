@@ -4,7 +4,13 @@ import com.tam.notification.domain.channel.ChannelSender;
 import com.tam.notification.domain.enums.ChannelType;
 import org.springframework.stereotype.Component;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Component
 public class ChannelSenderRouter {
@@ -14,16 +20,34 @@ public class ChannelSenderRouter {
     public ChannelSenderRouter(List<ChannelSender> senders) {
         EnumMap<ChannelType, List<ChannelSender>> grouped = new EnumMap<>(ChannelType.class);
 
-        Set<String> registrations = new HashSet<>();
+        Set<SenderRegistration> registrations = new HashSet<>();
+        Set<PriorityRegistration> priorities = new HashSet<>();
+
         for (ChannelSender sender : senders) {
+            if (sender.channelType() == null) {
+                throw new IllegalStateException("渠道channelType不能为空");
+            }
+
             if (sender.providerCode() == null || sender.providerCode().isBlank()) {
                 throw new IllegalStateException("渠道providerCode不能为空");
             }
 
-            // 使用通知类型+供应商代码作为注册，如果重复则抛出异常
-            String registration = sender.channelType() + ":" + sender.providerCode();
+            SenderRegistration registration = new SenderRegistration(
+                    sender.channelType(),
+                    sender.providerCode()
+            );
             if (!registrations.add(registration)) {
                 throw new IllegalStateException("渠道Sender重复注册: " + registration);
+            }
+
+            PriorityRegistration priorityRegistration = new PriorityRegistration(
+                    sender.channelType(),
+                    sender.priority()
+            );
+            if (!priorities.add(priorityRegistration)) {
+                throw new IllegalStateException(
+                        "同一渠道不能注册相同priority: " + priorityRegistration
+                );
             }
 
             // 如果不存在则创建，然后加入
@@ -35,12 +59,12 @@ public class ChannelSenderRouter {
 
         EnumMap<ChannelType, List<ChannelSender>> sorted = new EnumMap<>(ChannelType.class);
 
-        // 按优先级排序，排序后的顺序为：优先级高的在前，优先级一样的按照渠道类型排序
+        // 数字越小，路由优先级越高；同一渠道的priority已在启动时保证唯一。
         grouped.forEach((channelType, candidates) -> {
-            candidates.sort(Comparator.comparingInt(ChannelSender::priority).thenComparing(ChannelSender::channelType));
+            candidates.sort(Comparator.comparingInt(ChannelSender::priority));
             sorted.put(
                     channelType,
-                    candidates
+                    List.copyOf(candidates)
             );
         });
         this.senderMap = Map.copyOf(sorted);
@@ -58,5 +82,17 @@ public class ChannelSenderRouter {
         }
 
         return senders;
+    }
+
+    private record SenderRegistration(
+            ChannelType channelType,
+            String providerCode
+    ) {
+    }
+
+    private record PriorityRegistration(
+            ChannelType channelType,
+            int priority
+    ) {
     }
 }

@@ -1,20 +1,22 @@
 package com.tam.notification.resilience;
 
+import com.tam.notification.domain.enums.ChannelType;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * 渠道熔断器
+ * 渠道熔断器。
+ *
+ * <p>每个 {@link CircuitKey} 对应一个独立状态机。Permission 中的 generation
+ * 用于识别旧状态周期中仍在执行的请求，避免旧请求结果破坏新的熔断状态。</p>
  */
 @Component
 public class ChannelCircuitBreaker {
 
-    /**
-     * 熔断器状态
-     */
     public enum State {
         CLOSED,
         OPEN,
@@ -22,24 +24,40 @@ public class ChannelCircuitBreaker {
     }
 
     /**
-     * 熔断器许可
+     * 渠道类型和供应商共同确定一个熔断器，避免不同渠道相互污染。
+     */
+    public record CircuitKey(
+            ChannelType channelType,
+            String providerCode
+    ) {
+        public CircuitKey {
+            Objects.requireNonNull(channelType, "channelType不能为空");
+            if (providerCode == null || providerCode.isBlank()) {
+                throw new IllegalArgumentException("providerCode不能为空");
+            }
+        }
+    }
+
+    /**
+     * 一次渠道调用取得的熔断许可。
      *
-     * @param allowed
-     * @param failoverAllowed
+     * @param allowed 是否允许执行渠道调用
+     * @param failoverAllowed 熔断拒绝时是否允许切换备用供应商
+     * @param generation 取得许可时的熔断器状态版本
+     * @param halfOpenProbe 是否为 HALF_OPEN 探测请求
      */
     public record Permission(
             boolean allowed,
-            boolean failoverAllowed
+            boolean failoverAllowed,
+            long generation,
+            boolean halfOpenProbe
     ) {
     }
 
-    // 熔断器状态
-    private final ConcurrentMap<String, CircuitState> states = new ConcurrentHashMap<>();
+    private final ConcurrentMap<CircuitKey, CircuitState> states = new ConcurrentHashMap<>();
 
-    // 熔断失败阈值
     private final int failureThreshold;
 
-    // 熔断打开时间
     private final long openDurationNanos;
 
     public ChannelCircuitBreaker(
@@ -53,42 +71,35 @@ public class ChannelCircuitBreaker {
         if (openDuration == null
                 || openDuration.isZero()
                 || openDuration.isNegative()) {
-            throw new IllegalStateException(
-                    "熔断打开时间必须大于0"
-            );
+            throw new IllegalStateException("熔断打开时间必须大于0");
         }
 
         this.failureThreshold = properties.getFailureThreshold();
         this.openDurationNanos = openDuration.toNanos();
     }
 
-    /**
-     * 尝试获取许可
-     *
-     * @param providerCode
-     * @return
-     */
     public Permission tryAcquire(
-            String providerCode
+            CircuitKey key
     ) {
-        return stateOf(providerCode).tryAcquire(System.nanoTime());
+        return stateOf(key).tryAcquire(System.nanoTime());
     }
 
     public void recordSuccess(
-            String providerCode
+            CircuitKey key,
+            Permission permission
     ) {
-        stateOf(providerCode).recordSuccess();
+        stateOf(key).recordSuccess(permission);
     }
 
     /**
-     * 供应商明确表示没有受理请求，这种失败打开熔断后可以安全切换备用
-     *
-     * @param providerCode
+     * 供应商明确表示没有受理请求，这种失败打开熔断器后可以安全切换备用。
      */
     public void recordDefinitiveFailure(
-            String providerCode
+            CircuitKey key,
+            Permission permission
     ) {
-        stateOf(providerCode).recordFailure(
+        stateOf(key).recordFailure(
+                permission,
                 System.nanoTime(),
                 failureThreshold,
                 openDurationNanos,
@@ -97,14 +108,14 @@ public class ChannelCircuitBreaker {
     }
 
     /**
-     * 超时、连接断开等结果未知的失败，打开熔断器后不能自动切换备用
-     *
-     * @param providerCode
+     * 超时、连接断开等结果未知的失败，打开熔断器后不能自动切换备用。
      */
     public void recordUnknownFailure(
-            String providerCode
+            CircuitKey key,
+            Permission permission
     ) {
-        stateOf(providerCode).recordFailure(
+        stateOf(key).recordFailure(
+                permission,
                 System.nanoTime(),
                 failureThreshold,
                 openDurationNanos,
@@ -112,175 +123,229 @@ public class ChannelCircuitBreaker {
         );
     }
 
+    /**
+     * 隔离拒绝没有实际调用供应商，不计为供应商失败。
+     * 如果拒绝发生在 HALF_OPEN 探测阶段，则重新打开熔断器等待下一次探测。
+     */
     public void recordNeutral(
-            String providerCode
+            CircuitKey key,
+            Permission permission
     ) {
-        stateOf(providerCode).recordNeutral(
+        stateOf(key).recordNeutral(
+                permission,
                 System.nanoTime(),
                 openDurationNanos
         );
     }
 
     public State currentState(
-            String providerCode
+            CircuitKey key
     ) {
-        return stateOf(providerCode).currentState(System.nanoTime());
+        return stateOf(key).currentState(System.nanoTime());
     }
 
-    /**
-     * 获取熔断器状态
-     *
-     * @param providerCode
-     * @return
-     */
     private CircuitState stateOf(
-            String providerCode
+            CircuitKey key
     ) {
-        // 容器中如果没有的话就创建一个，如果已经有了就返回已经存在的熔断器
+        Objects.requireNonNull(key, "circuitKey不能为空");
         return states.computeIfAbsent(
-                providerCode,
+                key,
                 ignored -> new CircuitState()
         );
     }
 
-    /**
-     * 熔断器状态
-     */
     private static final class CircuitState {
 
-        // 连续失败次数
+        private State state = State.CLOSED;
+
+        /**
+         * 只有状态周期切换时才递增，同一 CLOSED 周期内的并发请求共享同一代次。
+         */
+        private long generation;
+
         private int consecutiveFailures;
 
-        // 熔断打开时间
         private long openUntilNanos;
 
-        // 半开探测请求是否在请求过程中
         private boolean halfOpenProbeInFlight;
 
-        /*
-         * 熔断器是否只由“明确未受理”打开。
-         * 只要出现过结果未知失败，就保守禁止切备用。
+        /**
+         * 只要当前失败周期出现过结果未知失败，就保守禁止切换备用供应商。
          */
         private boolean failoverAllowed = true;
 
-        /**
-         * 尝试获取许可
-         *
-         * @param nowNanos
-         * @return
-         */
         synchronized Permission tryAcquire(
                 long nowNanos
         ) {
-            // 熔断器处于CLOSED状态
-            if (openUntilNanos == 0) {
-                return new Permission(true, true);
+            if (state == State.CLOSED) {
+                return allowedPermission(false);
             }
 
-            // 在openUntilNanos之前，熔断器处于OPEN状态，所以送入的当前时间如果小于openUntilNanos，则返回false
-            if (nowNanos < openUntilNanos) {
-                return new Permission(
-                        false,
-                        failoverAllowed
-                );
+            if (state == State.OPEN) {
+                if (nowNanos < openUntilNanos) {
+                    return deniedPermission();
+                }
+
+                state = State.HALF_OPEN;
+                halfOpenProbeInFlight = true;
+                return allowedPermission(true);
             }
 
-            /*
-             * OPEN时间结束，只允许一个探测请求。
-             */
+            // HALF_OPEN 阶段只允许一个探测请求，其余请求继续被熔断。
             if (halfOpenProbeInFlight) {
-                return new Permission(
-                        false,
-                        failoverAllowed
-                );
+                return deniedPermission();
             }
 
+            // 防御性分支：正常状态转换不会出现 HALF_OPEN 但没有探测请求的情况。
             halfOpenProbeInFlight = true;
-
-            // 在open状态下，熔断器处于HALF_OPEN状态，允许1个探测请求
-            return new Permission(
-                    true,
-                    failoverAllowed
-            );
+            return allowedPermission(true);
         }
 
-        /**
-         * 记录成功
-         */
-        synchronized void recordSuccess() {
-            consecutiveFailures = 0; // 重置连续失败次数
-            openUntilNanos = 0; // 关闭熔断器
-            halfOpenProbeInFlight = false; // 停止探测请求
-            failoverAllowed = true; // 允许切换备用
+        synchronized void recordSuccess(
+                Permission permission
+        ) {
+            if (!isCurrent(permission)) {
+                return;
+            }
+
+            if (state == State.CLOSED
+                    && !permission.halfOpenProbe()) {
+                consecutiveFailures = 0;
+                failoverAllowed = true;
+                return;
+            }
+
+            if (state == State.HALF_OPEN
+                    && permission.halfOpenProbe()
+                    && halfOpenProbeInFlight) {
+                closeCircuit();
+            }
         }
 
-        /**
-         * 记录失败
-         *
-         * @param nowNanos
-         * @param threshold
-         * @param durationNanos
-         * @param definitive
-         */
         synchronized void recordFailure(
+                Permission permission,
                 long nowNanos,
                 int threshold,
                 long durationNanos,
                 boolean definitive
         ) {
-            consecutiveFailures++; // 连续失败次数+1
+            if (!isCurrent(permission)) {
+                /*
+                 * 旧代次结果不能改变当前计数或状态，但“结果未知”是安全例外：
+                 * 如果当前仍处于 OPEN/HALF_OPEN，该旧请求可能已经发送成功，
+                 * 它被 MQ 重投后不能直接切备用供应商。
+                 */
+                if (!definitive
+                        && isOlderPermission(permission)
+                        && state != State.CLOSED) {
+                    failoverAllowed = false;
+                }
+                return;
+            }
 
-            // 明确未受理的失败打开熔断器后，不允许切换备用
             if (!definitive) {
                 failoverAllowed = false;
             }
 
-            // 熔断器处于HALF_OPEN状态，或者连续失败次数达到阈值，则打开熔断器
-            if (halfOpenProbeInFlight
-                    || consecutiveFailures >= threshold) {
-                openUntilNanos = nowNanos + durationNanos;
-                halfOpenProbeInFlight = false;
+            if (state == State.CLOSED
+                    && !permission.halfOpenProbe()) {
+                consecutiveFailures++;
+
+                if (consecutiveFailures >= threshold) {
+                    openCircuit(nowNanos, durationNanos);
+                }
+                return;
+            }
+
+            if (state == State.HALF_OPEN
+                    && permission.halfOpenProbe()
+                    && halfOpenProbeInFlight) {
+                openCircuit(nowNanos, durationNanos);
             }
         }
 
-        /**
-         * 记录中立结果
-         *
-         * @param nowNanos
-         * @param durationNanos
-         */
         synchronized void recordNeutral(
+                Permission permission,
                 long nowNanos,
                 long durationNanos
         ) {
-            // 熔断器处于HALF_OPEN状态，则打开熔断器
-            if (halfOpenProbeInFlight) {
-                halfOpenProbeInFlight = false;
-                openUntilNanos = nowNanos + durationNanos; // 打开时间延续到 durationNanos
+            if (!isCurrent(permission)) {
+                return;
+            }
+
+            if (state == State.HALF_OPEN
+                    && permission.halfOpenProbe()
+                    && halfOpenProbeInFlight) {
+                openCircuit(nowNanos, durationNanos);
             }
         }
 
-        /**
-         * 获取熔断器状态
-         *
-         * @param nowNanos
-         * @return
-         */
         synchronized State currentState(
                 long nowNanos
         ) {
-            // 如果打开延续时间是0，熔断器处于CLOSED状态
-            if (openUntilNanos == 0) {
-                return State.CLOSED;
+            if (state == State.OPEN && nowNanos >= openUntilNanos) {
+                return State.HALF_OPEN;
             }
+            return state;
+        }
 
-            // 如果打开延续时间大于0，并且当前时间小于打开延续时间，熔断器处于OPEN状态
-            if (nowNanos < openUntilNanos) {
-                return State.OPEN;
-            }
+        private Permission allowedPermission(
+                boolean halfOpenProbe
+        ) {
+            return new Permission(
+                    true,
+                    failoverAllowed,
+                    generation,
+                    halfOpenProbe
+            );
+        }
 
-            // 熔断器处于HALF_OPEN状态
-            return State.HALF_OPEN;
+        private Permission deniedPermission() {
+            return new Permission(
+                    false,
+                    failoverAllowed,
+                    generation,
+                    false
+            );
+        }
+
+        private boolean isCurrent(
+                Permission permission
+        ) {
+            return permission != null
+                    && permission.allowed()
+                    && permission.generation() == generation;
+        }
+
+        private boolean isOlderPermission(
+                Permission permission
+        ) {
+            return permission != null
+                    && permission.allowed()
+                    && permission.generation() < generation;
+        }
+
+        private void openCircuit(
+                long nowNanos,
+                long durationNanos
+        ) {
+            state = State.OPEN;
+            openUntilNanos = nowNanos + durationNanos;
+            halfOpenProbeInFlight = false;
+
+            // 使当前状态周期内已经放行、但尚未返回的请求全部过期。
+            generation++;
+        }
+
+        private void closeCircuit() {
+            state = State.CLOSED;
+            consecutiveFailures = 0;
+            openUntilNanos = 0;
+            halfOpenProbeInFlight = false;
+            failoverAllowed = true;
+
+            // 使 HALF_OPEN 探测周期的许可失效。
+            generation++;
         }
     }
 }
