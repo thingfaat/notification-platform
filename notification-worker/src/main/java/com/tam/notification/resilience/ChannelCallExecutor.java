@@ -6,6 +6,10 @@ import com.tam.notification.domain.channel.ChannelSendCommand;
 import com.tam.notification.domain.channel.ChannelSendResult;
 import com.tam.notification.domain.channel.ChannelSender;
 import com.tam.notification.domain.enums.ChannelType;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PreDestroy;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
@@ -18,15 +22,38 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 渠道调用执行器
+ * <p>
+ * 每一种ChannelType使用独立线程池，防止一个渠道阻塞其他渠道
  */
 @Component
 public class ChannelCallExecutor {
+
+    // 渠道线程池活动线程池
+    private static final String EXECUTOR_ACTIVE = "notification.channel.executor.active";
+
+    // 渠道线程池当前线程数
+    private static final String EXECUTOR_POOL_SIZE = "notification.channel.executor.pool.size";
+
+    // 渠道线程池等待队列长度
+    private static final String EXECUTOR_QUEUED = "notification.channel.executor.queued";
+
+    // 渠道线程池队列剩余容量
+    private static final String EXECUTOR_QUEUE_REMAINING = "notification.channel.executor.queue.remaining";
+
+    // 渠道线程池已完成任务数
+    private static final String EXECUTOR_COMPLETED = "notification.channel.executor.completed";
+
+    // 渠道隔离线程池拒绝任务数
+    private static final String EXECUTOR_REJECTED = "notification.channel.executor.rejected";
 
     private final Map<ChannelType, ThreadPoolExecutor> executors;
 
     private final Duration callTimeout;
 
-    public ChannelCallExecutor(ChannelResilienceProperties properties) {
+    public ChannelCallExecutor(
+            ChannelResilienceProperties properties,
+            MeterRegistry meterRegistry
+    ) {
         validate(properties);
 
         this.callTimeout = properties.getCallTimeout();
@@ -34,17 +61,32 @@ public class ChannelCallExecutor {
         final var pools = new EnumMap<ChannelType, ThreadPoolExecutor>(ChannelType.class);
 
         for (final var channelType : ChannelType.values()) {
+
+            Counter rejectedCounter = Counter.builder(EXECUTOR_REJECTED)
+                    .description("渠道隔离线程池拒绝任务数")
+                    .tag("channel", channelTag(channelType))
+                    .register(meterRegistry);
+
+
+            final var executor = new ThreadPoolExecutor(
+                    properties.getCorePoolSize(), // 核心线程数
+                    properties.getMaxPoolSize(), // 最大线程数
+                    properties.getKeepAlive().toMillis(), // 线程空闲时间
+                    TimeUnit.MILLISECONDS, // 空闲时间单位
+                    new ArrayBlockingQueue<>(properties.getQueueCapacity()), // 等待任务队列
+                    new NamedThreadFactory("channel-" + channelType.name().toLowerCase() + "-"), // 线程名
+                    new MeteredAbortPolicy(rejectedCounter) // 队列满拒绝策略
+            );
+
+            bindExecutorMetrics(
+                    meterRegistry,
+                    channelType,
+                    executor
+            );
+
             pools.put(
                     channelType,
-                    new ThreadPoolExecutor(
-                            properties.getCorePoolSize(), // 核心线程数
-                            properties.getMaxPoolSize(), // 最大线程数
-                            properties.getKeepAlive().toMillis(), // 线程空闲时间
-                            TimeUnit.MILLISECONDS, // 空闲时间单位
-                            new ArrayBlockingQueue<>(properties.getQueueCapacity()), // 等待任务队列
-                            new NamedThreadFactory("channel-" + channelType.name().toLowerCase() + "-"), // 线程名
-                            new ThreadPoolExecutor.AbortPolicy() // 队列满拒绝策略
-                    )
+                    executor
             );
         }
 
@@ -53,6 +95,7 @@ public class ChannelCallExecutor {
 
     /**
      * 渠道调用
+     *
      * @param sender
      * @param command
      * @return
@@ -125,6 +168,43 @@ public class ChannelCallExecutor {
         executors.values().forEach(ThreadPoolExecutor::shutdownNow);
     }
 
+    private void bindExecutorMetrics(
+            MeterRegistry meterRegistry,
+            ChannelType channelType,
+            ThreadPoolExecutor executor
+    ) {
+        String channel = channelTag(channelType);
+
+        Gauge.builder(EXECUTOR_ACTIVE, executor, ThreadPoolExecutor::getActiveCount)
+                .description("渠道线程池活动线程池")
+                .tag("channel", channel)
+                .register(meterRegistry);
+
+        Gauge.builder(EXECUTOR_POOL_SIZE, executor, ThreadPoolExecutor::getPoolSize)
+                .description("渠道线程池当前线程数")
+                .tag("channel", channel)
+                .register(meterRegistry);
+
+        Gauge.builder(EXECUTOR_QUEUED, executor, pool -> pool.getQueue().size())
+                .description("渠道线程池等待队列长度")
+                .tag("channel", channel)
+                .register(meterRegistry);
+
+        Gauge.builder(EXECUTOR_QUEUE_REMAINING, executor, pool -> pool.getQueue().remainingCapacity())
+                .description("渠道线程池队列剩余容量")
+                .tag("channel", channel)
+                .register(meterRegistry);
+
+        FunctionCounter.builder(EXECUTOR_COMPLETED, executor, pool -> pool.getCompletedTaskCount())
+                .description("渠道线程池已完成任务数")
+                .tag("channel", channel)
+                .register(meterRegistry);
+    }
+
+    private String channelTag(ChannelType channelType) {
+        return channelType.name().toLowerCase();
+    }
+
     private void validate(ChannelResilienceProperties properties) {
         if (properties.getCorePoolSize() <= 0
                 || properties.getMaxPoolSize()
@@ -159,6 +239,29 @@ public class ChannelCallExecutor {
             throw new IllegalStateException(
                     name + "必须大于0"
             );
+        }
+    }
+
+    /**
+     * 使用监听器，统计拒绝
+     */
+    private static final class MeteredAbortPolicy implements RejectedExecutionHandler {
+        // 当前线程拒绝统计
+        private final Counter rejectedCounter;
+
+        // 使用的拒绝策略，抛出RejectedExecutionException
+        private final ThreadPoolExecutor.AbortPolicy delegate = new ThreadPoolExecutor.AbortPolicy();
+
+        private MeteredAbortPolicy(
+                Counter rejectedCounter
+        ) {
+            this.rejectedCounter = rejectedCounter;
+        }
+
+        @Override
+        public void rejectedExecution(final Runnable runnable, final ThreadPoolExecutor executor) {
+            rejectedCounter.increment(); // 增加统计数量
+            delegate.rejectedExecution(runnable, executor); // 调用原来的代理的拒绝策略
         }
     }
 

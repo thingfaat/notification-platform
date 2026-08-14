@@ -110,10 +110,28 @@ services:
     networks:
       - notification-network
 
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: notification-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - notification-network
+
 volumes:
   mysql-data:
   redis-data:
   rocketmq-store:
+  prometheus-data:
 
 networks:
   notification-network:

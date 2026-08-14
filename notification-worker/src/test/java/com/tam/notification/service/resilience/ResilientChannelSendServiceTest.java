@@ -9,6 +9,7 @@ import com.tam.notification.domain.channel.ChannelSendResultType;
 import com.tam.notification.domain.channel.ChannelSender;
 import com.tam.notification.domain.enums.ChannelType;
 import com.tam.notification.resilience.*;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -24,10 +25,16 @@ public class ResilientChannelSendServiceTest {
 
     private ChannelCallExecutor callExecutor;
 
+    private SimpleMeterRegistry meterRegistry;
+
     @AfterEach
     void tearDown() {
         if (callExecutor != null) {
             callExecutor.close();
+        }
+
+        if (meterRegistry != null) {
+            meterRegistry.close();
         }
 
         TenantContext.clear();
@@ -72,6 +79,17 @@ public class ResilientChannelSendServiceTest {
 
         assertEquals(1, primary.calls());
         assertEquals(1, backup.calls());
+
+        assertEquals(
+                1.0,
+                meterRegistry
+                        .get("notification.channel.failover")
+                        .tag("channel", "sms")
+                        .tag("provider", "primary")
+                        .tag("reason", "retryable_failure")
+                        .counter()
+                        .count()
+        );
     }
 
     @Test
@@ -161,6 +179,17 @@ public class ResilientChannelSendServiceTest {
 
         assertEquals(1, primary.calls());
         assertEquals(0, backup.calls());
+
+        assertEquals(
+                1,
+                meterRegistry
+                        .get("notification.channel.call.duration")
+                        .tag("channel", "sms")
+                        .tag("provider", "primary")
+                        .tag("outcome", "timeout")
+                        .timer()
+                        .count()
+        );
     }
 
     @Test
@@ -300,15 +329,23 @@ public class ResilientChannelSendServiceTest {
             ChannelResilienceProperties properties,
             ChannelSender... senders
     ) {
-        callExecutor =
-                new ChannelCallExecutor(properties);
+        meterRegistry = new SimpleMeterRegistry();
+
+        callExecutor = new ChannelCallExecutor(
+                properties,
+                meterRegistry
+        );
+
+        ChannelCircuitBreaker circuitBreaker =
+                new ChannelCircuitBreaker(properties);
 
         return new ResilientChannelSendService(
                 new ChannelSenderRouter(
                         List.of(senders)
                 ),
                 callExecutor,
-                new ChannelCircuitBreaker(properties)
+                circuitBreaker,
+                new ChannelMetrics(meterRegistry)
         );
     }
 

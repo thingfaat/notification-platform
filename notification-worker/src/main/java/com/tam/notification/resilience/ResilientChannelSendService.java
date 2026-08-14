@@ -6,10 +6,12 @@ import com.tam.notification.domain.channel.ChannelSendCommand;
 import com.tam.notification.domain.channel.ChannelSendResult;
 import com.tam.notification.domain.channel.ChannelSendResultType;
 import com.tam.notification.domain.channel.ChannelSender;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -29,6 +31,8 @@ public class ResilientChannelSendService {
     // 渠道熔断器
     private final ChannelCircuitBreaker circuitBreaker;
 
+    private final ChannelMetrics channelMetrics;
+
     /**
      * 发送渠道消息
      *
@@ -38,7 +42,12 @@ public class ResilientChannelSendService {
     public ChannelSendResult send(ChannelSendCommand command) {
         ChannelSendResult lastRetryableFailure = null;
 
-        for (ChannelSender sender : senderRouter.routeCandidates(command.channelType())) {
+        List<ChannelSender> candidates = senderRouter.routeCandidates(command.channelType());
+
+        for (int index = 0; index < candidates.size(); index++) {
+            ChannelSender sender = candidates.get(index);
+
+            boolean hasNext = index + 1 < candidates.size();
 
             ChannelCircuitBreaker.CircuitKey key = new ChannelCircuitBreaker.CircuitKey(
                     sender.channelType(),
@@ -46,6 +55,9 @@ public class ResilientChannelSendService {
             );
 
             final var permission = circuitBreaker.tryAcquire(key); // 获取渠道调用权限
+
+            channelMetrics.updateCircuitState(sender, circuitBreaker.currentState(key));
+
             if (!permission.allowed()) { // 熔断
                 if (permission.failoverAllowed()) { // 允许安全切换
                     log.warn("渠道熔断，安全切换备用供应商，providerCode={}， messageId = {}", sender.providerCode(), command.messageId());
@@ -61,17 +73,24 @@ public class ResilientChannelSendService {
                 );
             }
 
+            Timer.Sample sample = channelMetrics.startCall();
+
             // 允许渠道调用
             ChannelSendResult result;
             try {
                 result = callExecutor.execute(sender, command);
             } catch (ChannelResilienceException exception) {
+                channelMetrics.recordCall(sample, sender, exception.getType().name());
+
                 // 记录熔断类型
                 if (exception.getType() == ChannelResilienceException.Type.ISOLATION_REJECTED) { // 隔离拒绝
                     circuitBreaker.recordNeutral(key, permission);
                 } else { // 未知异常
                     circuitBreaker.recordUnknownFailure(key, permission);
                 }
+
+                channelMetrics.updateCircuitState(sender, circuitBreaker.currentState(key));
+
                 /*
                  * 超时、线程中断和运行时异常都无法确认
                  * 是否已经发送。
@@ -81,20 +100,51 @@ public class ResilientChannelSendService {
                  */
                 throw exception;
             } catch (RuntimeException exception) {
+
+                channelMetrics.recordCall(
+                        sample,
+                        sender,
+                        "RUNTIME_EXCEPTION"
+                );
+
                 circuitBreaker.recordUnknownFailure(key, permission);
+
+                channelMetrics.updateCircuitState(
+                        sender,
+                        circuitBreaker.currentState(key)
+                );
+
                 throw exception;
             }
+
+            channelMetrics.recordCall(
+                    sample,
+                    sender,
+                    result.type().name()
+            );
 
             if (result.type() == ChannelSendResultType.RETRYABLE_FAILURE) {
                 circuitBreaker.recordDefinitiveFailure(key, permission);
 
+                channelMetrics.updateCircuitState(
+                        sender,
+                        circuitBreaker.currentState(key)
+                );
+
                 lastRetryableFailure = result;
 
-                log.warn("主渠道明确拒绝请求，尝试备用供应商，providerCode={}, messageId={}, errorCode={}",
-                        sender.providerCode(),
-                        command.messageId(),
-                        result.errorCode()
-                );
+                if (hasNext) {
+                    channelMetrics.recordFailover(
+                            sender,
+                            "retryable_failure"
+                    );
+
+                    log.warn("主渠道明确拒绝请求，尝试备用供应商，providerCode={}, messageId={}, errorCode={}",
+                            sender.providerCode(),
+                            command.messageId(),
+                            result.errorCode()
+                    );
+                }
 
                 continue;
             }
@@ -104,6 +154,11 @@ public class ResilientChannelSendService {
              * 供应商给出了明确响应，供应商本身可达。
              */
             circuitBreaker.recordSuccess(key, permission);
+
+            channelMetrics.updateCircuitState(
+                    sender,
+                    circuitBreaker.currentState(key)
+            );
 
             return result;
         }
