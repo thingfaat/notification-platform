@@ -56,6 +56,15 @@ notification:
       send-timeout-ms: 1000
       visitor-salt: ${SHORT_LINK_VISITOR_SALT:local-development-salt}
 
+    snowflake:
+      # day16仅供实现bean使用，生产默认仍是随机base62
+      # 多实例生产启用前必须实现可靠、互斥的nodeId分配
+      node-id: ${SHORT_LINK_SNOWFLAKE_NODE_ID:1}
+      # 5ms 与 50ms回拨实验均应被逻辑时间吸收，超过50ms明确失败
+      max-backward-ms: 50
+      # 同毫秒4096个序列耗尽之后，最多等待10ms
+      sequence-wait-timeout-ms: 10
+
 # 监控
 management:
   endpoints:
