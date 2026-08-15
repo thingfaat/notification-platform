@@ -239,6 +239,28 @@ public class ResilientChannelSendServiceTest {
          */
         assertEquals(2, primary.calls());
         assertEquals(3, backup.calls());
+
+        assertEquals(
+                1.0,
+                meterRegistry
+                        .get("notification.channel.circuit.rejected")
+                        .tag("channel", "sms")
+                        .tag("provider", "primary")
+                        .tag("failover_allowed", "true")
+                        .counter()
+                        .count()
+        );
+
+        assertEquals(
+                1.0,
+                meterRegistry
+                        .get("notification.channel.failover")
+                        .tag("channel", "sms")
+                        .tag("provider", "primary")
+                        .tag("reason", "circuit_open")
+                        .counter()
+                        .count()
+        );
     }
 
     @Test
@@ -287,6 +309,17 @@ public class ResilientChannelSendServiceTest {
 
         assertEquals(1, primary.calls());
         assertEquals(0, backup.calls());
+
+        assertEquals(
+                1.0,
+                meterRegistry
+                        .get("notification.channel.circuit.rejected")
+                        .tag("channel", "sms")
+                        .tag("provider", "primary")
+                        .tag("failover_allowed", "false")
+                        .counter()
+                        .count()
+        );
     }
 
     @Test

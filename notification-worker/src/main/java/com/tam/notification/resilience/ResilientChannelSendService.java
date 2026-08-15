@@ -58,15 +58,26 @@ public class ResilientChannelSendService {
 
             channelMetrics.updateCircuitState(sender, circuitBreaker.currentState(key));
 
-            if (!permission.allowed()) { // 熔断
-                if (permission.failoverAllowed()) { // 允许安全切换
-                    log.warn("渠道熔断，安全切换备用供应商，providerCode={}， messageId = {}", sender.providerCode(), command.messageId());
+            if (!permission.allowed()) {
+                channelMetrics.recordCircuitRejected(
+                        sender,
+                        permission.failoverAllowed()
+                );
+
+                if (permission.failoverAllowed()) {
+                    if (hasNext) {
+                        channelMetrics.recordFailover(
+                                sender,
+                                "circuit_open"
+                        );
+                        log.warn("渠道熔断，安全切换备用供应商，providerCode={}, messageId={}",
+                                sender.providerCode(),
+                                command.messageId()
+                        );
+                    }
                     continue;
                 }
-                /*
-                 * 熔断器由结果未知异常打开。
-                 * 不允许盲目切备用。
-                 */
+
                 throw ChannelResilienceException.circuitOpen(
                         sender.providerCode(),
                         false
