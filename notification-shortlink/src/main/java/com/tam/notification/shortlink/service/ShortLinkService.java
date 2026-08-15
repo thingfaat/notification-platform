@@ -81,7 +81,7 @@ public class ShortLinkService {
         candidate.setBusinessType(command.businessType());
         candidate.setIdempotencyKey(command.idempotencyKey());
         candidate.setOriginalUrl(command.originalUrl().trim());
-        candidate.setExpireAt(command.expireAt());
+        candidate.setExpireAt(expireAt);
         candidate.setStatus(ShortLinkStatus.ACTIVE);
 
         // 创建新记录，由底层数据库保证唯一键
