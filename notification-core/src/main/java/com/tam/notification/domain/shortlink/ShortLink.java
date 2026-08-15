@@ -13,6 +13,15 @@ public class ShortLink {
 
     private Long applicationId;
 
+    /** 区分管理短链和消息追踪短链。 */
+    private ShortLinkBusinessType businessType;
+
+    /**
+     * 业务类型内部的幂等键。
+     * 数据库会联合 tenantId、applicationId、businessType 建立唯一约束。
+     */
+    private String idempotencyKey;
+
     private String originalUrl;
 
     private LocalDateTime expireAt;

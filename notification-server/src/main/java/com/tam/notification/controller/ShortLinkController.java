@@ -23,8 +23,9 @@ public class ShortLinkController {
 
     @PostMapping
     public ApiResponse<ShortLinkResponse> create(@Valid @RequestBody CreateShortLinkRequest request) {
-        CreateShortLinkCommand command = new CreateShortLinkCommand(
+        CreateShortLinkCommand command = CreateShortLinkCommand.management(
                 request.applicationId(),
+                request.requestId(),
                 request.originalUrl(),
                 request.expireAt()
         );

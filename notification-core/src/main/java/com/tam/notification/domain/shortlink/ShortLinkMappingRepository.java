@@ -13,6 +13,15 @@ public interface ShortLinkMappingRepository {
     boolean trySave(ShortLinkMapping mapping);
 
     /**
+     * 幂等重放需要根据已有的shortLinkId找回第一次创建的shortCode。
+     * 普通租户会自动带 tenantId
+     *
+     * @param shortLinkId
+     * @return
+     */
+    Optional<ShortLinkMapping> findByShortLinkId(Long shortLinkId);
+
+    /**
      * 公共跳转入口在查询前没有租户上下文，因此通过全局唯一的短码跨租户查询路由映射
      *
      * @param shortCode

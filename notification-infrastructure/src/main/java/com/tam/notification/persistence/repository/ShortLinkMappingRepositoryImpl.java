@@ -1,6 +1,7 @@
 package com.tam.notification.persistence.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.tam.notification.common.tenant.TenantContext;
 import com.tam.notification.domain.shortlink.ShortLinkMapping;
 import com.tam.notification.domain.shortlink.ShortLinkMappingRepository;
@@ -35,6 +36,16 @@ public class ShortLinkMappingRepositoryImpl implements ShortLinkMappingRepositor
             return true;
         }
         return false;
+    }
+
+    @Override
+    public Optional<ShortLinkMapping> findByShortLinkId(final Long shortLinkId) {
+        ShortLinkMappingDO data = mappingMapper.selectOne(
+                Wrappers.<ShortLinkMappingDO>lambdaQuery()
+                        .eq(ShortLinkMappingDO::getShortLinkId, shortLinkId)
+        );
+
+        return Optional.ofNullable(data).map(this::toDomain);
     }
 
     @Override

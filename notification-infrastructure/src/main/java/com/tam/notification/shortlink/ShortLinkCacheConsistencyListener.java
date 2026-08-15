@@ -7,6 +7,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+/**
+ * 短链创建成功后，将短链加入布隆过滤器
+ */
 @Component
 @RequiredArgsConstructor
 public class ShortLinkCacheConsistencyListener {

@@ -17,6 +17,10 @@ public class ShortLinkDO {
 
     private Long applicationId;
 
+    private String businessType;
+
+    private String idempotencyKey;
+
     private String originalUrl;
 
     private LocalDateTime expireAt;
