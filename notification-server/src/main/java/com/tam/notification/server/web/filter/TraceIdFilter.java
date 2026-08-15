@@ -35,11 +35,11 @@ public class TraceIdFilter extends OncePerRequestFilter {
         response.setHeader(TraceContext.TRACE_ID_HEADER, traceId);
 
         try {
-            log.warn("traceId: {}, request: {}, method: {}, path: {}", traceId, request.getRemoteAddr(), request.getMethod(), request.getRequestURI());
+            log.info("traceId: {}, request: {}, method: {}, path: {}", traceId, request.getRemoteAddr(), request.getMethod(), request.getRequestURI());
             filterChain.doFilter(request, response);
         } finally {
             long elapsed = System.currentTimeMillis() - startTime;
-            log.warn("Request completed: method={}, uri={}, status={}, elapsedMs={}", request.getMethod(), request.getRequestURI(), response.getStatus(), elapsed);
+            log.info("Request completed: method={}, uri={}, status={}, elapsedMs={}", request.getMethod(), request.getRequestURI(), response.getStatus(), elapsed);
             TraceContext.clear();
         }
     }

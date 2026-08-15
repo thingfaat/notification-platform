@@ -56,7 +56,7 @@ public class ShortLinkService {
 
         String originalUrl = command.originalUrl().trim();
         String idempotencyKey = command.idempotencyKey().trim();
-        LocalDateTime expireAt = command.expireAt();
+        LocalDateTime expireAt = truncateToMillis(command.expireAt());
 
         final var existing = shortLinkRepository.findByIdempotencyKey(
                 command.applicationId(),
@@ -118,7 +118,7 @@ public class ShortLinkService {
      * @return
      */
     private String allocateShortCode(ShortLink shortLink) {
-        for (int attempt = 0; attempt <= MAX_CODE_GENERATE_ATTEMPTS; attempt++) {
+        for (int attempt = 1; attempt <= MAX_CODE_GENERATE_ATTEMPTS; attempt++) {
             String shortCode = shortCodeGenerator.generate();
 
             ShortLinkMapping mapping = new ShortLinkMapping();
