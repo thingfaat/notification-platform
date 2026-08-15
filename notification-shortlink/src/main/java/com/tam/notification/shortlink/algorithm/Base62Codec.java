@@ -2,7 +2,7 @@ package com.tam.notification.shortlink.algorithm;
 
 /**
  * 无损base62编解码器
- * 这里只做禁止转换，不负责生成唯一ID，也绝不会为了固定长度对结果取模或者截断
+ * 这里只做进制转换，不负责生成唯一ID，也绝不会为了固定长度对结果取模或者截断
  */
 public final class Base62Codec {
 

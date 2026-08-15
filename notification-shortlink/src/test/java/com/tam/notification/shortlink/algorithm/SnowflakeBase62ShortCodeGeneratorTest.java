@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -40,6 +41,7 @@ public class SnowflakeBase62ShortCodeGeneratorTest {
 
     /**
      * 测试生成 32 个线程，每个线程生成 10_000 个短码，确保没有重复。
+     *
      * @throws Exception
      */
     @Test
@@ -163,6 +165,7 @@ public class SnowflakeBase62ShortCodeGeneratorTest {
 
     /**
      * 生成器
+     *
      * @param clock
      * @return
      */
@@ -250,6 +253,93 @@ public class SnowflakeBase62ShortCodeGeneratorTest {
             return currentRead <= sameMillisReadCount
                     ? baseMillis
                     : baseMillis + 1L;
+        }
+    }
+
+    @Test
+    void shouldAcceptNextMillisEvenWhenThreadResumesAfterTimeout() {
+        /*
+         * 前 4097 次读取都停留在同一毫秒。
+         *
+         * 第 4097 个 ID 会耗尽 sequence：
+         * - nextId() 首先进行第 4097 次时间读取；
+         * - waitUntilNextMillis() 进行第 4098 次读取；
+         * - 第 4098 次读取模拟线程暂停 20ms，然后返回下一毫秒。
+         *
+         * 生成器的等待超时为 10ms。
+         * 旧实现会因为先检查超时而抛出异常；
+         * 修复后的实现发现时间已经前进，应正常生成 ID。
+         */
+        Clock clock = new DelayedAdvanceClock(
+                BASE_MILLIS,
+                4097L,
+                20L
+        );
+
+        SnowflakeBase62ShortCodeGenerator generator =
+                new SnowflakeBase62ShortCodeGenerator(
+                        clock,
+                        1L,
+                        50L,
+                        10L
+                );
+
+        // 先用完当前毫秒的 sequence=0...4095。
+        for (int index = 0; index < 4096; index++) {
+            generator.nextId();
+        }
+
+        // 第 4097 个 ID 应当进入下一毫秒，而不是误报超时。
+        assertDoesNotThrow(generator::nextId);
+    }
+
+    /**
+     * 前若干次读取返回固定毫秒。
+     * 达到指定次数后，模拟线程暂停，然后返回下一毫秒。
+     */
+    private static final class DelayedAdvanceClock extends Clock {
+
+        private final long baseMillis;
+        private final long sameMillisReadCount;
+        private final long delayNanos;
+        private final AtomicLong readCount = new AtomicLong();
+
+        private DelayedAdvanceClock(
+                long baseMillis,
+                long sameMillisReadCount,
+                long delayMillis
+        ) {
+            this.baseMillis = baseMillis;
+            this.sameMillisReadCount = sameMillisReadCount;
+            this.delayNanos = TimeUnit.MILLISECONDS.toNanos(delayMillis);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return Instant.ofEpochMilli(millis());
+        }
+
+        @Override
+        public long millis() {
+            long currentRead = readCount.incrementAndGet();
+
+            if (currentRead <= sameMillisReadCount) {
+                return baseMillis;
+            }
+
+            // 模拟 GC 或线程调度暂停。
+            LockSupport.parkNanos(delayNanos);
+            return baseMillis + 1L;
         }
     }
 }

@@ -1449,7 +1449,7 @@ mvn \
 sample=1000000
 unique=1000000
 collisions=0
-elapsedMs=
+elapsedMs=14510
 JDK=
 CPU=
 ```

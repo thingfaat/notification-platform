@@ -139,20 +139,43 @@ public class SnowflakeBase62ShortCodeGenerator implements ShortCodeGenerator {
         }
     }
 
+    /**
+     * 等待物理时钟进入下一毫秒
+     * 判断顺序非常重要：
+     * - 先读取当前时间；
+     * - 如果已经进入下一毫秒，立即成功返回；
+     * - 只有时间还没有前进时，才检查是否等待超时
+     *
+     * @param previousTimestamp 已经耗尽 4096 个序列的毫秒
+     * @return 大于 previousTimestamp 的新时间戳
+     */
     private long waitUntilNextMillis(long previousTimestamp) {
-        long deadline = System.nanoTime() + sequenceWaitTimeoutNanos;
-        long timestamp;
+        long waitStartNanos = System.nanoTime();
 
-        do {
-            timestamp = clock.millis();
-            if (System.nanoTime() >= deadline) {
+        while (true) {
+            long timestamp = clock.millis();
+
+            /**
+             * 先判断成功条件
+             * 即使线程因为GC或调度暂停后才恢复，只要物理时间已经前进，就应该使用新的毫秒，而不是误报等待时间
+             * 这里的意思是：只要我能拿到的时间是已经超过上一个被消耗完的时间戳的，就是符合我的要求，返回这个时间戳
+             */
+            if (timestamp > previousTimestamp) {
+                validateTimestampRange(timestamp);
+
+                // 新毫秒的第一个ID从sequence=0开始
+                sequence = 0;
+                return timestamp;
+            }
+
+            // 时间仍未前进时，才检查是否已经允许超过等待时间
+            long elapsedNanos = System.nanoTime() - waitStartNanos;
+            if (elapsedNanos >= sequenceWaitTimeoutNanos) {
                 throw new IllegalStateException("同毫秒序列已耗尽，等待下一毫秒超时");
             }
-            Thread.onSpinWait();
-        } while (timestamp <= previousTimestamp);
 
-        validateTimestampRange(timestamp);
-        sequence = 0L;
-        return timestamp;
+            // 提示JVM：当前线程正在进行短时间自旋等待
+            Thread.onSpinWait();
+        }
     }
 }

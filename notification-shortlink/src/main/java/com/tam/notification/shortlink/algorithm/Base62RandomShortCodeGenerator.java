@@ -8,7 +8,7 @@ import java.security.SecureRandom;
 
 /**
  * 生产默认的8位随机base62短码生成器
- * 随机生成的不能cong0教学上保证零碰撞，因此最终还是依赖 short_link_mapping0.short_code 唯一索引 + ShortLinkService 有限重试
+ * 随机生成的不能从教学上保证零碰撞，因此最终还是依赖 short_link_mapping.short_code 唯一索引 + ShortLinkService 有限重试
  */
 @Primary // 在多个接口继承到ShortCodeGenerator 时，优先使用本类
 @Component

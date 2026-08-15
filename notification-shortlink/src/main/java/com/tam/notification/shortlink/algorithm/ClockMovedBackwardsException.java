@@ -13,7 +13,7 @@ public class ClockMovedBackwardsException extends IllegalStateException {
     private final long backwardMillis;
 
     public ClockMovedBackwardsException(long backwardMillis) {
-        super("xitong0时钟严重回拨：" + backwardMillis + "毫秒");
+        super("系统时钟严重回拨：" + backwardMillis + "毫秒");
         this.backwardMillis = backwardMillis;
     }
 }
