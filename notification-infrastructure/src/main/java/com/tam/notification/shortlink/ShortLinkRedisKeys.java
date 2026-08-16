@@ -27,7 +27,7 @@ public final class ShortLinkRedisKeys {
      * @return
      */
     public static String clickCount(String shortCode) {
-        return String.format("shortlink:{%s}:clickCount", requireShortCode(shortCode));
+        return String.format("shortlink:{%s}:click:count", requireShortCode(shortCode));
     }
 
     public static String bloomBitmap() {
