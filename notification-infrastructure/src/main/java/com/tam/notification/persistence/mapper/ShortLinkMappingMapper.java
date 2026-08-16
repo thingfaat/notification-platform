@@ -48,9 +48,14 @@ public interface ShortLinkMappingMapper extends BaseMapper<ShortLinkMappingDO> {
 
     @InterceptorIgnore(tenantLine = "1")
     @Select("""
-            select short_code
-            from short_link_mapping
-            order by id
+            select mapping.short_code
+                from short_link_mapping mapping
+                inner join short_link link
+                on link.id = mapping.short_link_id
+               and link.tenant_id = mapping.tenant_id
+            where link.status = 'ACTIVE'
+                and link.expire_at > current_timestamp(3)
+            order by mapping.id
             """)
-    List<String> selectAllShortCodesAcrossTenants();
+    List<String> selectAllActiveShortCodesAcrossTenants();
 }

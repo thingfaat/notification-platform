@@ -57,8 +57,8 @@ public class ShortLinkMappingRepositoryImpl implements ShortLinkMappingRepositor
     }
 
     @Override
-    public List<String> findAllShortCodesAcrossTenants() {
-        return mappingMapper.selectAllShortCodesAcrossTenants();
+    public List<String> findAllActiveShortCodesAcrossTenants() {
+        return mappingMapper.selectAllActiveShortCodesAcrossTenants();
     }
 
     private ShortLinkMapping toDomain(ShortLinkMappingDO shortLinkMappingDO) {

@@ -1,13 +1,11 @@
 package com.tam.notification.shortlink;
 
 /**
- * 通知短链 redis key的统一入口
- * shortCode当前是全局唯一 8 位base62，因此客户直接作为hash tag。
- * 禁止调用方自己拼接key，避免同一业务对象意外散落到不同槽位
+ * Redis Key 的唯一构造入口，禁止业务代码手工拼接
  */
 public final class ShortLinkRedisKeys {
 
-    private final static String BLOOM_TAG = "bloom:v2";
+    private final static String BLOOM_TAG = "bloom:v3";
 
     private ShortLinkRedisKeys() {
     }
@@ -30,12 +28,19 @@ public final class ShortLinkRedisKeys {
         return String.format("shortlink:{%s}:click:count", requireShortCode(shortCode));
     }
 
-    public static String bloomBitmap() {
-        return String.format("shortlink:{%s}:bitmap", BLOOM_TAG);
+    public static String bloomSlice(long sliceStartEpochSecond) {
+        if (sliceStartEpochSecond < 0) {
+            throw new IllegalArgumentException("sliceStartEpochSecond must not be negative");
+        }
+        return "shortlink:{" + BLOOM_TAG + "}:slice:" + sliceStartEpochSecond;
     }
 
     public static String bloomReady() {
-        return String.format("shortlink:{%s}:ready", BLOOM_TAG);
+        return "shortlink:{" + BLOOM_TAG + "}:ready";
+    }
+
+    public static String bloomSliceRegistry() {
+        return "shortlink:{" + BLOOM_TAG + "}:slices";
     }
 
     private static String requireShortCode(String shortCode) {
@@ -47,7 +52,7 @@ public final class ShortLinkRedisKeys {
          * 大括号会改变 Redis Hash Tag 解析语义。
          * 当前合法短码只有 Base62，本检查用于防止未来调用方绕过校验。
          */
-        if (shortCode.indexOf('{' ) >= 0 || shortCode.indexOf('}' ) >= 0) {
+        if (shortCode.indexOf('{') >= 0 || shortCode.indexOf('}') >= 0) {
             throw new IllegalArgumentException("shortCode不能包含大括号");
         }
 

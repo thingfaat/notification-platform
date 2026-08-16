@@ -30,9 +30,9 @@ public interface ShortLinkMappingRepository {
     Optional<ShortLinkMapping> findByShortCodeAcrossTenants(String shortCode);
 
     /**
-     * 仅用于布隆过滤器初始化，不能用于普通租户业务查询
+     * 仅用于 Bloom 完整快照，普通租户业务禁止调用
      *
      * @return
      */
-    List<String> findAllShortCodesAcrossTenants();
+    List<String> findAllActiveShortCodesAcrossTenants();
 }

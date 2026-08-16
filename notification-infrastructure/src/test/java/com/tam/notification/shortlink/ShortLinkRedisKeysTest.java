@@ -7,29 +7,29 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class ShortLinkRedisKeysTest {
     @Test
-    void sameShortCodeKeysShouldUseSameSlot() {
-        String shortCode = "aZ8k2LmP";
+    void sameShortCodeKeysShouldUseSameSlotAndStableFormat() {
+        String code = "aZ8k2LmP";
+        String redirect = ShortLinkRedisKeys.redirect(code);
 
-        int redirectSlot = RedisClusterSlot.slot(
-                ShortLinkRedisKeys.redirect(shortCode)
-        );
-
-        assertEquals(
-                redirectSlot,
-                RedisClusterSlot.slot(ShortLinkRedisKeys.negative(shortCode))
-        );
-        assertEquals(
-                redirectSlot,
-                RedisClusterSlot.slot(ShortLinkRedisKeys.clickCount(shortCode))
-        );
+        assertEquals("shortlink:{aZ8k2LmP}:redirect", redirect);
+        assertEquals("shortlink:{aZ8k2LmP}:click:count",
+                ShortLinkRedisKeys.clickCount(code));
+        assertEquals(RedisClusterSlot.slot(redirect),
+                RedisClusterSlot.slot(ShortLinkRedisKeys.negative(code)));
+        assertEquals(RedisClusterSlot.slot(redirect),
+                RedisClusterSlot.slot(ShortLinkRedisKeys.clickCount(code)));
     }
 
     @Test
-    void bloomKeysShouldUseSameGlobalSlot() {
-        assertEquals(
-                RedisClusterSlot.slot(ShortLinkRedisKeys.bloomBitmap()),
-                RedisClusterSlot.slot(ShortLinkRedisKeys.bloomReady())
-        );
+    void allBloomV3KeysShouldUseSameSlot() {
+        int expectedSlot = RedisClusterSlot.slot(ShortLinkRedisKeys.bloomReady());
+
+        assertEquals(expectedSlot,
+                RedisClusterSlot.slot(ShortLinkRedisKeys.bloomSliceRegistry()));
+        assertEquals(expectedSlot,
+                RedisClusterSlot.slot(ShortLinkRedisKeys.bloomSlice(1723809600L)));
+        assertEquals(expectedSlot,
+                RedisClusterSlot.slot(ShortLinkRedisKeys.bloomSlice(1723831200L)));
     }
 
     @Test
@@ -42,9 +42,7 @@ public class ShortLinkRedisKeysTest {
 
     @Test
     void bracesMustNotEnterHashTag() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> ShortLinkRedisKeys.redirect("bad{code}")
-        );
+        assertThrows(IllegalArgumentException.class,
+                () -> ShortLinkRedisKeys.redirect("bad{code}"));
     }
 }

@@ -47,9 +47,16 @@ notification:
       jitter: 30s
 
     bloom:
-      # 16,777,216 bits，约 2 MiB。
-      bit-size: 16777216
-      hash-functions: 7
+      # 先以 10 万个仍有效短码做小规模可验证实验。
+      expected-insertions: 100000
+      # 这是查询全部保留片后的总体目标，不是每片目标。
+      overall-false-positive-probability: 0.01
+      # ISO-8601 Duration；生产默认每 6 小时轮换。
+      slice-duration: PT6H
+      # 当前片 + 3 个历史片，总窗口 24 小时。
+      retained-slice-count: 4
+      # 每分钟检查一次是否跨入新片或 ready 丢失。
+      rebuild-check-interval-ms: 60000
 
     click:
       topic: short-link-click-topic
