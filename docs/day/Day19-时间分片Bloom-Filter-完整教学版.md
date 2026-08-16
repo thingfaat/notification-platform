@@ -2,6 +2,8 @@
 
 > 本文只生成教学文档，不修改 `notification-platform` 或 `short_link` 项目源码。
 >
+> 2026-08-16 验收修订：原文遗漏多实例交错重建竞态；最终代码已改为带 token/TTL 的同槽分布式重建锁，并同步更新完整代码、并发实验和生命周期记录。
+>
 > 真实代码基线：
 >
 > - 通知平台：`/Users/hingfaattam/workspace/learn_workspace/notification-platform`
@@ -22,8 +24,9 @@
 默认保留：4 片，即当前片 + 3 个历史片
 
 每次进入新片：
-清除 ready → 查询 MySQL 中仍有效的短码 → 批量写当前片
-→ 设置当前片 ready → 清理保留窗口外的旧片
+Lua 抢占 token 重建锁并清除 ready → 查询 MySQL 中仍有效的短码
+→ 每批校验 token 后写当前片 → 校验 token 后原子发布 ready 并释放锁
+→ 清理保留窗口外的旧片
 
 新短链创建：事务提交后写入当前片
 
@@ -174,12 +177,13 @@ k = 9
 
 ```text
 本机 trusted=false
-→ 删除共享 ready
-→ 清空当前片
+→ Lua 原子抢占带 UUID token 和 TTL 的分布式重建锁
+→ 抢锁成功后，在同一个 Lua 中删除共享 ready 和当前片
 → 从 MySQL 读取仍有效短码
-→ 批量写入当前片
-→ 设置 TTL 和片注册表
-→ 最后写 ready=currentSlice
+→ 每个批次校验 token 后写入当前片
+→ 发布 Lua 再次校验 token
+→ 设置 TTL、片注册表并最后写 ready=currentSlice
+→ 原子释放重建锁
 → 本机 trusted=true
 ```
 
@@ -280,14 +284,17 @@ Day19 继续复用 Day18 学到的 Hash Tag 规则，让 ready、注册表和所
 → ready 已是当前片：直接使用，不重复扫描 MySQL
 → ready 缺失或仍是旧片：
    trusted=false
-   → 清除 ready 和当前片
+   → 尝试取得同槽分布式重建锁
+   → 抢锁成功后原子清除 ready 和当前片
    → SQL 只查询 status=ACTIVE 且 expire_at>now 的短码
-   → 每 500 个短码合并为一次 Lua 写入
-   → ready=currentSlice
+   → 每 500 个短码校验锁 token 后写入
+   → 校验 token 后原子发布 ready=currentSlice 并释放锁
    → 清理保留窗口外的片
 ```
 
-多个实例同时执行时，SETBIT、ZADD、DEL 都是幂等的；ready 在重建期间被清除，所以请求仍然 fail-open。生产数据量很大时可再加带 token 的分布式重建锁和分页扫描，本日小规模实验不把锁复杂度混入 Bloom 主线。
+> 2026-08-16 验收修订：初版把“SETBIT 幂等”误认为整个“DEL → 分批 SETBIT → ready”流程可以安全并发。事实上，实例 B 的 DEL 可能清除实例 A 已写入的批次，而 A 随后仍发布 ready，形成残缺 Bitmap。最终实现必须使用带随机 token 和 TTL 的分布式重建锁，并在每批写入和发布 ready 时校验所有权。
+
+多个实例同时触发时，只有锁持有者扫描数据库和删除当前片；其他实例直接退出并等待下一次检查。锁过期的旧实例无法继续写入或发布 ready，因此合法短链不会因为交错重建而被判定为不存在。
 
 ## 3.4 旧片清理
 
@@ -533,29 +540,37 @@ public class BloomClockConfig {
 
 ## 5.4 修改 ShortLinkRedisKeys.java
 
-Bloom v3 的 ready、注册表和所有片必须使用相同 Hash Tag。
+最终代码增加了与所有 Bloom Key 同槽的重建锁 Key；禁止业务代码手工拼接。
 
 ```java
 package com.tam.notification.shortlink;
 
-/** Redis Key 的唯一构造入口，禁止业务代码手工拼接。 */
+/**
+ * Redis Key 的唯一构造入口，禁止业务代码手工拼接
+ */
 public final class ShortLinkRedisKeys {
 
-    private static final String BLOOM_TAG = "bloom:v3";
+    private final static String BLOOM_TAG = "bloom:v3";
 
     private ShortLinkRedisKeys() {
     }
 
     public static String redirect(String shortCode) {
-        return "shortlink:{" + requireShortCode(shortCode) + "}:redirect";
+        return String.format("shortlink:{%s}:redirect", requireShortCode(shortCode));
     }
 
     public static String negative(String shortCode) {
-        return "shortlink:{" + requireShortCode(shortCode) + "}:negative";
+        return String.format("shortlink:{%s}:negative", requireShortCode(shortCode));
     }
 
+    /**
+     * day18只验证key设计，不改变现有 rocket mq+mysql点击统计链路
+     *
+     * @param shortCode
+     * @return
+     */
     public static String clickCount(String shortCode) {
-        return "shortlink:{" + requireShortCode(shortCode) + "}:click:count";
+        return String.format("shortlink:{%s}:click:count", requireShortCode(shortCode));
     }
 
     public static String bloomSlice(long sliceStartEpochSecond) {
@@ -573,13 +588,29 @@ public final class ShortLinkRedisKeys {
         return "shortlink:{" + BLOOM_TAG + "}:slices";
     }
 
+    /**
+     * Bloom 完整重建的分布式锁。
+     * <p>
+     * 所有 Bloom Key 都使用 {bloom:v3} Hash Tag，
+     * 保证后续多 Key Lua 可以在 Redis Cluster 中执行。
+     */
+    public static String bloomRebuildLock() {
+        return "shortlink:{" + BLOOM_TAG + "}:rebuild:lock";
+    }
+
     private static String requireShortCode(String shortCode) {
         if (shortCode == null || shortCode.isBlank()) {
             throw new IllegalArgumentException("shortCode不能为空");
         }
+
+        /*
+         * 大括号会改变 Redis Hash Tag 解析语义。
+         * 当前合法短码只有 Base62，本检查用于防止未来调用方绕过校验。
+         */
         if (shortCode.indexOf('{') >= 0 || shortCode.indexOf('}') >= 0) {
             throw new IllegalArgumentException("shortCode不能包含大括号");
         }
+
         return shortCode;
     }
 }
@@ -587,31 +618,66 @@ public final class ShortLinkRedisKeys {
 
 ## 5.5 修改 ShortLinkProtection.java
 
+重建完成需要返回发布结果；扫描异常还需要显式中止并比较锁 token。
+
 ```java
 package com.tam.notification.domain.shortlink;
 
 import java.util.Collection;
 import java.util.Optional;
 
+/**
+ * 防穿透抽象
+ */
 public interface ShortLinkProtection {
 
     Optional<ShortLinkNegativeReason> getNegative(String shortCode);
 
-    void cacheNegative(String shortCode, ShortLinkNegativeReason reason);
+    void cacheNegative(
+            String shortCode,
+            ShortLinkNegativeReason reason
+    );
 
     void evictNegative(String shortCode);
 
-    /** false 表示一定不存在；true 表示可能存在或 Bloom 当前不可用。 */
+    /**
+     * false表示一定不存在，true表示可能存在或bloom当前不可用
+     *
+     * @param shortCode
+     * @return
+     */
     boolean mightContain(String shortCode);
 
     void addToBloom(String shortCode);
 
-    /** 当前共享 ready、当前片和本机 trusted 是否可以建立信任。 */
+    /**
+     * 当前共享ready、当前片和本机trusted是否可以建立信任
+     *
+     * @return
+     */
     boolean isBloomReady();
 
+    /**
+     * 尝试取得 Bloom 重建资格。
+     *
+     * @return true 表示当前实例取得了分布式重建锁；
+     * false 表示其他实例正在重建
+     */
     boolean beginBloomRebuild();
 
-    void completeBloomRebuild(Collection<String> shortCodes);
+    /**
+     * 完成 Bitmap 写入并发布 ready。
+     *
+     * @return true 表示当前实例仍持有重建锁并成功发布；
+     * false 表示锁已失效或发布失败
+     */
+    boolean completeBloomRebuild(Collection<String> shortCodes);
+
+    /**
+     * MySQL 扫描或重建过程异常时，中止本次重建。
+     * 只有锁中的 token 仍属于当前实例时，才能释放锁。
+     */
+    void abortBloomRebuild();
 }
 ```
 
@@ -654,11 +720,7 @@ public List<String> findAllActiveShortCodesAcrossTenants() {
 
 ## 5.7 完整修改 RedisShortLinkProtection.java
 
-位置：
-
-```text
-notification-infrastructure/src/main/java/com/tam/notification/shortlink/RedisShortLinkProtection.java
-```
+以下为 2026-08-16 多实例并发验收修订后的完整实现：分布式锁使用随机 token 和 TTL，批次写入、发布与中止都校验所有权。
 
 ```java
 package com.tam.notification.shortlink;
@@ -678,64 +740,215 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * redis布隆过滤器与负缓存实现
+ */
 @Slf4j
 @Service
 public class RedisShortLinkProtection implements ShortLinkProtection {
 
     private static final int REBUILD_BATCH_CODES = 500;
+    // 布隆过滤器就绪key
     private static final String BLOOM_READY_KEY = ShortLinkRedisKeys.bloomReady();
+    // 布隆过滤器key
     private static final String BLOOM_REGISTRY_KEY = ShortLinkRedisKeys.bloomSliceRegistry();
 
     /**
-     * KEYS[1] 是 ready，KEYS[2] 是当前片，其余是历史片。
-     * ARGV[1] 是预期当前片，ARGV[2...] 是该短码的 bit offset。
-     * 返回 2 表示状态不可信，Java 侧必须 fail-open。
+     * 小规模课程版本给重建锁 5 分钟租期。
+     * <p>
+     * 如果重建超过 5 分钟，后续批次和 ready 发布会因为 token 校验失败而终止，
+     * 不会把不完整 Bitmap 发布出去。
      */
-    private static final DefaultRedisScript<Long> CHECK_SLICES_SCRIPT =
-            new DefaultRedisScript<>("""
-                    if redis.call('GET', KEYS[1]) ~= ARGV[1] then
-                        return 2
-                    end
+    private static final Duration REBUILD_LOCK_TTL = Duration.ofMinutes(5);
 
-                    if redis.call('EXISTS', KEYS[2]) == 0 then
-                        return 2
-                    end
+    private static final String BLOOM_REBUILD_LOCK_KEY =
+            ShortLinkRedisKeys.bloomRebuildLock();
 
-                    for keyIndex = 2, #KEYS do
-                        local allSet = 1
-                        for argIndex = 2, #ARGV do
-                            if redis.call(
-                                'GETBIT',
-                                KEYS[keyIndex],
-                                tonumber(ARGV[argIndex])
-                            ) == 0 then
-                                allSet = 0
-                                break
-                            end
-                        end
-                        if allSet == 1 then
-                            return 1
-                        end
-                    end
+    /**
+     * 保存本机当前重建的 token 和目标时间片。
+     * <p>
+     * token 用来证明“这个锁仍然属于我”；
+     * sliceStart 防止一次重建跨越时间片后错误发布。
+     */
+    private final AtomicReference<RebuildContext> activeRebuild = new AtomicReference<>();
 
-                    return 0
-                    """, Long.class);
+    private record RebuildContext(
+            String token,
+            long sliceStart,
+            String bitmapKey
+    ) {
+    }
 
-    private static final DefaultRedisScript<Long> SET_BITS_SCRIPT =
-            new DefaultRedisScript<>("""
-                    for index = 1, #ARGV do
-                        redis.call('SETBIT', KEYS[1], tonumber(ARGV[index]), 1)
+    /**
+     * 布隆过滤器检查脚本
+     * KEYS[1] 是ready，KEYS[2]是当前片，其余是历史片
+     * ARGV[1] 是预期当前片，ARGV[2...] 是该短码的bit offset
+     * 返回2表示状态不可信，java侧必须fail-open
+     */
+    private static final DefaultRedisScript<Long> CHECK_SLICES_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+                return 2
+            end
+
+            if redis.call('EXISTS', KEYS[2]) == 0 then
+                return 2
+            end
+
+            for keyIndex = 2, #KEYS do
+                local allSet = 1
+                for argIndex = 2, #ARGV do
+                    if redis.call(
+                        'GETBIT',
+                        KEYS[keyIndex],
+                        tonumber(ARGV[argIndex])
+                    ) == 0 then
+                        allSet = 0
+                        break
                     end
-                    return #ARGV
-                    """, Long.class);
+                end
+                if allSet == 1 then
+                    return 1
+                end
+            end
+
+            return 0
+            """,
+            Long.class
+    );
+
+    private static final DefaultRedisScript<Long> SET_BITS_SCRIPT = new DefaultRedisScript<>("""
+            for index = 1, #ARGV do
+                redis.call('SETBIT', KEYS[1], tonumber(ARGV[index]), 1)
+            end
+            return #ARGV
+            """,
+            Long.class
+    );
+
+    /**
+     * 原子抢锁并进入重建状态
+     * KEYS[1] = rebuild lock
+     * KEYS[2] = ready
+     * KEYS[3] = 当前 Bitmap
+     * ARGV[1] = UUID token
+     * ARGV[2] = lock TTL 毫秒
+     */
+    private static final DefaultRedisScript<Long> BEGIN_REBUILD_SCRIPT = new DefaultRedisScript<>("""
+            local acquired = redis.call(
+                'SET',
+                KEYS[1],
+                ARGV[1],
+                'NX',
+                'PX',
+                ARGV[2]
+            )
+
+            if not acquired then
+                return 0
+            end
+
+            -- 抢锁成功后才能撤销 ready 和删除当前片。
+            redis.call('DEL', KEYS[2], KEYS[3])
+            return 1
+            """,
+            Long.class
+    );
+
+    /**
+     * 带所有权校验的批量写入
+     * KEYS[1] = rebuild lock
+     * KEYS[2] = 当前 Bitmap
+     * ARGV[1] = token
+     * ARGV[2] = Bitmap TTL
+     * ARGV[3...] = bit offsets
+     */
+    private static final DefaultRedisScript<Long> SET_REBUILD_BITS_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+                return -1
+            end
+
+            for index = 3, #ARGV do
+                redis.call(
+                    'SETBIT',
+                    KEYS[2],
+                    tonumber(ARGV[index]),
+                    1
+                )
+            end
+
+            -- 即使重建中途失败，残留的部分 Bitmap 最终也会过期。
+            redis.call('PEXPIRE', KEYS[2], ARGV[2])
+            return #ARGV - 2
+            """,
+            Long.class
+    );
+
+    /**
+     * 原子发布 ready
+     * KEYS[1] = rebuild lock
+     * KEYS[2] = Bitmap
+     * KEYS[3] = ZSET registry
+     * KEYS[4] = ready
+     * ARGV[1] = token
+     * ARGV[2] = slice ID
+     * ARGV[3] = Bitmap TTL
+     * ARGV[4] = ready TTL
+     */
+    private static final DefaultRedisScript<Long> PUBLISH_REBUILD_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+                return 0
+            end
+
+            -- 空数据集时才创建一个全 0 Bitmap。
+            -- 如果增量写已经创建了 Bitmap，绝对不能清除 bit 0。
+            if redis.call('EXISTS', KEYS[2]) == 0 then
+                redis.call('SETBIT', KEYS[2], 0, 0)
+            end
+
+            redis.call('PEXPIRE', KEYS[2], ARGV[3])
+            redis.call(
+                'ZADD',
+                KEYS[3],
+                tonumber(ARGV[2]),
+                ARGV[2]
+            )
+
+            -- ready 必须在所有关键数据写完后发布。
+            redis.call(
+                'SET',
+                KEYS[4],
+                ARGV[2],
+                'PX',
+                ARGV[4]
+            )
+
+            -- 发布成功后原子释放锁。
+            redis.call('DEL', KEYS[1])
+            return 1
+            """,
+            Long.class
+    );
+
+    /**
+     * 只有 token 仍属于当前实例时，才允许撤销重建并释放锁。
+     * <p>
+     * 不能直接 DEL 锁：旧实例的锁过期后，另一个实例可能已经拿到了新锁。
+     */
+    private static final DefaultRedisScript<Long> ABORT_REBUILD_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+                return 0
+            end
+
+            redis.call('DEL', KEYS[2], KEYS[3], KEYS[1])
+            return 1
+            """,
+            Long.class
+    );
 
     private final AtomicBoolean bloomTrusted = new AtomicBoolean(false);
     /**
@@ -743,6 +956,7 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
      * dirty 只能由完整重建成功清除，不能被一次 GET ready 清除。
      */
     private final AtomicBoolean bloomDirty = new AtomicBoolean(false);
+
     private final StringRedisTemplate redisTemplate;
     private final BloomFilterParameters parameters;
     private final BloomSliceWindow sliceWindow;
@@ -751,18 +965,12 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
 
     public RedisShortLinkProtection(
             StringRedisTemplate redisTemplate,
-            @Value("${notification.shortlink.bloom.expected-insertions:100000}")
-            long expectedInsertions,
-            @Value("${notification.shortlink.bloom.overall-false-positive-probability:0.01}")
-            double overallFalsePositiveProbability,
-            @Value("${notification.shortlink.bloom.slice-duration:PT6H}")
-            Duration sliceDuration,
-            @Value("${notification.shortlink.bloom.retained-slice-count:4}")
-            int retainedSliceCount,
-            @Value("${notification.shortlink.negative-cache.ttl:PT2M}")
-            Duration negativeTtl,
-            @Value("${notification.shortlink.negative-cache.jitter:PT30S}")
-            Duration negativeJitter,
+            @Value("${notification.shortlink.bloom.expected-insertions:100000}") long expectedInsertions,
+            @Value("${notification.shortlink.bloom.overall-false-positive-probability:0.01}") double overallFalsePositiveProbability,
+            @Value("${notification.shortlink.bloom.slice-duration:PT6H}") Duration sliceDuration,
+            @Value("${notification.shortlink.bloom.retained-slice-count:4}") int retainedSliceCount,
+            @Value("${notification.shortlink.negative-cache.ttl:PT2M}") Duration negativeTtl,
+            @Value("${notification.shortlink.negative-cache.jitter:PT30S}") Duration negativeJitter,
             @Qualifier("bloomClock") Clock clock
     ) {
         if (negativeTtl == null || negativeTtl.isZero() || negativeTtl.isNegative()) {
@@ -774,9 +982,9 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
 
         this.redisTemplate = redisTemplate;
         this.parameters = BloomFilterParameters.calculate(
-                expectedInsertions,
-                overallFalsePositiveProbability,
-                retainedSliceCount
+                expectedInsertions, // 预期插入量
+                overallFalsePositiveProbability, // 误判率
+                retainedSliceCount // 保留的片数
         );
         this.sliceWindow = new BloomSliceWindow(
                 clock,
@@ -787,8 +995,7 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
         this.negativeJitter = negativeJitter;
 
         log.info(
-                "time-sliced bloom configured, expectedInsertions={}, bitSize={}, "
-                        + "hashFunctions={}, perSliceFpp={}, overallFpp={}",
+                "time-sliced bloom configured, expectedInsertions={}, bitSize={}, hashFunctions={}, perSliceFpp={}, overallFpp={}",
                 parameters.expectedInsertions(),
                 parameters.bitSize(),
                 parameters.hashFunctions(),
@@ -798,7 +1005,7 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
     }
 
     @Override
-    public Optional<ShortLinkNegativeReason> getNegative(String shortCode) {
+    public Optional<ShortLinkNegativeReason> getNegative(final String shortCode) {
         try {
             String value = redisTemplate.opsForValue().get(
                     ShortLinkRedisKeys.negative(shortCode)
@@ -818,7 +1025,7 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
     }
 
     @Override
-    public void cacheNegative(String shortCode, ShortLinkNegativeReason reason) {
+    public void cacheNegative(final String shortCode, final ShortLinkNegativeReason reason) {
         try {
             redisTemplate.opsForValue().set(
                     ShortLinkRedisKeys.negative(shortCode),
@@ -831,7 +1038,7 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
     }
 
     @Override
-    public void evictNegative(String shortCode) {
+    public void evictNegative(final String shortCode) {
         try {
             redisTemplate.delete(ShortLinkRedisKeys.negative(shortCode));
         } catch (RuntimeException exception) {
@@ -852,8 +1059,7 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
         try {
             String readyValue = redisTemplate.opsForValue().get(BLOOM_READY_KEY);
             Boolean bitmapExists = redisTemplate.hasKey(currentBitmap);
-            boolean trusted = currentValue.equals(readyValue)
-                    && Boolean.TRUE.equals(bitmapExists);
+            boolean trusted = currentValue.equals(readyValue) && bitmapExists;
             bloomTrusted.set(trusted);
             return trusted;
         } catch (RuntimeException exception) {
@@ -865,15 +1071,15 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
     }
 
     @Override
-    public boolean mightContain(String shortCode) {
-        // 其他实例可能已经完成重建，因此本机 false 时先尝试恢复信任。
+    public boolean mightContain(final String shortCode) {
+        // 其他实例可能已经完成重建，因此本机false时先尝试恢复信任
         if (!bloomTrusted.get() && !isBloomReady()) {
             return true;
         }
 
         List<String> keys = new ArrayList<>();
         keys.add(BLOOM_READY_KEY);
-        for (Long sliceStart : sliceWindow.retainedSliceStarts()) {
+        for (final var sliceStart : sliceWindow.retainedSliceStarts()) {
             keys.add(ShortLinkRedisKeys.bloomSlice(sliceStart));
         }
 
@@ -886,7 +1092,7 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
             Long result = redisTemplate.execute(
                     CHECK_SLICES_SCRIPT,
                     keys,
-                    arguments
+                    (Object[]) arguments
             );
             if (result == null || result == 2L) {
                 bloomTrusted.set(false);
@@ -902,7 +1108,7 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
     }
 
     @Override
-    public void addToBloom(String shortCode) {
+    public void addToBloom(final String shortCode) {
         long currentSlice = sliceWindow.currentSliceStart();
         String bitmapKey = ShortLinkRedisKeys.bloomSlice(currentSlice);
         try {
@@ -920,65 +1126,149 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
     @Override
     public boolean beginBloomRebuild() {
         bloomTrusted.set(false);
-        bloomDirty.set(true);
+
         long currentSlice = sliceWindow.currentSliceStart();
+        String bitmapKey = ShortLinkRedisKeys.bloomSlice(currentSlice);
+        RebuildContext context = new RebuildContext(
+                UUID.randomUUID().toString(),
+                currentSlice,
+                bitmapKey
+        );
+
+        // 除了分布式锁，再防止本机调用者绕过初始化器重复发起重建。
+        if (!activeRebuild.compareAndSet(null, context)) {
+            return false;
+        }
+
         try {
-            // 历史片继续保留；只清理即将完整重建的当前片。
-            redisTemplate.delete(List.of(
-                    BLOOM_READY_KEY,
-                    ShortLinkRedisKeys.bloomSlice(currentSlice)
-            ));
+            Long acquired = redisTemplate.execute(
+                    BEGIN_REBUILD_SCRIPT,
+                    List.of(
+                            BLOOM_REBUILD_LOCK_KEY,
+                            BLOOM_READY_KEY,
+                            bitmapKey
+                    ),
+                    context.token(),
+                    Long.toString(REBUILD_LOCK_TTL.toMillis())
+            );
+
+            if (acquired == null || acquired != 1L) {
+                activeRebuild.compareAndSet(context, null);
+                return false;
+            }
+
+            // 抢锁成功且 ready 已撤销；成功发布前，本机只能 fail-open。
+            bloomDirty.set(true);
             return true;
         } catch (RuntimeException exception) {
-            bloomDirty.set(true);
             log.warn("begin time-sliced bloom rebuild failed", exception);
-            clearBloomReadySafely();
+
+            /*
+             * Lua 可能已经执行成功，只是响应在网络中丢失。
+             * 使用 token 中止既能释放自己的锁，也不会删除其他实例的新锁。
+             */
+            abortBloomRebuild(context);
             return false;
         }
     }
 
     @Override
-    public void completeBloomRebuild(Collection<String> shortCodes) {
+    public boolean completeBloomRebuild(Collection<String> shortCodes) {
         bloomTrusted.set(false);
         bloomDirty.set(true);
-        long currentSlice = sliceWindow.currentSliceStart();
-        String currentSliceId = Long.toString(currentSlice);
-        String bitmapKey = ShortLinkRedisKeys.bloomSlice(currentSlice);
+
+        RebuildContext context = activeRebuild.get();
+        if (context == null) {
+            log.warn("complete bloom rebuild called without active context");
+            return false;
+        }
+
+        long actualSlice = sliceWindow.currentSliceStart();
+        if (actualSlice != context.sliceStart()) {
+            log.warn(
+                    "bloom slice changed during rebuild, expected={}, actual={}",
+                    context.sliceStart(),
+                    actualSlice
+            );
+            abortBloomRebuild(context);
+            return false;
+        }
+
+        String currentSliceId = Long.toString(context.sliceStart());
 
         try {
-            // 空数据集也要创建 Bitmap Key，Lua 才能区分“完整空片”和“片丢失”。
-            redisTemplate.opsForValue().setBit(bitmapKey, 0, false);
-            writeRebuildBatches(bitmapKey, shortCodes);
-            redisTemplate.expire(bitmapKey, sliceWindow.bitmapTtl());
+            writeRebuildBatches(context, shortCodes);
 
-            redisTemplate.opsForZSet().add(
-                    BLOOM_REGISTRY_KEY,
+            Long published = redisTemplate.execute(
+                    PUBLISH_REBUILD_SCRIPT,
+                    List.of(
+                            BLOOM_REBUILD_LOCK_KEY,
+                            context.bitmapKey(),
+                            BLOOM_REGISTRY_KEY,
+                            BLOOM_READY_KEY
+                    ),
+                    context.token(),
                     currentSliceId,
-                    currentSlice
+                    Long.toString(sliceWindow.bitmapTtl().toMillis()),
+                    Long.toString(sliceWindow.readyTtl().toMillis())
             );
 
-            // ready 必须是最后一个关键写入。
-            redisTemplate.opsForValue().set(
-                    BLOOM_READY_KEY,
-                    currentSliceId,
-                    sliceWindow.readyTtl()
-            );
+            if (published == null || published != 1L) {
+                log.warn("publish bloom rebuild rejected because lock ownership was lost");
+                abortBloomRebuild(context);
+                return false;
+            }
 
+            // 发布 Lua 已经原子释放 Redis 锁，这里只清理本机上下文。
+            activeRebuild.compareAndSet(context, null);
             cleanupExpiredSlicesSafely();
             bloomDirty.set(false);
             bloomTrusted.set(true);
-            log.info("time-sliced bloom rebuilt, slice={}, count={}",
-                    currentSliceId, shortCodes.size());
+            log.info("time-sliced bloom rebuilt, slice={}, count={}", currentSliceId, shortCodes.size());
+            return true;
         } catch (RuntimeException exception) {
             bloomTrusted.set(false);
             bloomDirty.set(true);
             log.error("complete time-sliced bloom rebuild failed", exception);
-            clearBloomReadySafely();
+            abortBloomRebuild(context);
+            return false;
+        }
+    }
+
+    @Override
+    public void abortBloomRebuild() {
+        RebuildContext context = activeRebuild.get();
+        if (context != null) {
+            abortBloomRebuild(context);
+        }
+    }
+
+    private void abortBloomRebuild(RebuildContext context) {
+        if (!activeRebuild.compareAndSet(context, null)) {
+            return;
+        }
+
+        bloomTrusted.set(false);
+        bloomDirty.set(true);
+
+        try {
+            redisTemplate.execute(
+                    ABORT_REBUILD_SCRIPT,
+                    List.of(
+                            BLOOM_REBUILD_LOCK_KEY,
+                            BLOOM_READY_KEY,
+                            context.bitmapKey()
+                    ),
+                    context.token()
+            );
+        } catch (RuntimeException exception) {
+            // 无法释放时依靠锁 TTL；绝不能无条件删除可能属于其他实例的锁。
+            log.warn("abort bloom rebuild failed; lock TTL will recover it", exception);
         }
     }
 
     private void writeRebuildBatches(
-            String bitmapKey,
+            RebuildContext context,
             Collection<String> shortCodes
     ) {
         List<String> batchOffsets = new ArrayList<>(
@@ -994,14 +1284,39 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
             codesInBatch++;
 
             if (codesInBatch == REBUILD_BATCH_CODES) {
-                setOffsets(bitmapKey, batchOffsets);
+                setRebuildOffsets(context, batchOffsets);
                 batchOffsets.clear();
                 codesInBatch = 0;
             }
         }
 
         if (!batchOffsets.isEmpty()) {
-            setOffsets(bitmapKey, batchOffsets);
+            setRebuildOffsets(context, batchOffsets);
+        }
+    }
+
+    private void setRebuildOffsets(
+            RebuildContext context,
+            Collection<String> offsets
+    ) {
+        List<String> arguments = new ArrayList<>(offsets.size() + 2);
+        arguments.add(context.token());
+        arguments.add(Long.toString(sliceWindow.bitmapTtl().toMillis()));
+        arguments.addAll(offsets);
+
+        Long affectedBits = redisTemplate.execute(
+                SET_REBUILD_BITS_SCRIPT,
+                List.of(
+                        BLOOM_REBUILD_LOCK_KEY,
+                        context.bitmapKey()
+                ),
+                arguments.toArray()
+        );
+
+        if (affectedBits == null || affectedBits.longValue() != offsets.size()) {
+            throw new IllegalStateException(
+                    "bloom rebuild lock lost or bit write failed"
+            );
         }
     }
 
@@ -1009,7 +1324,7 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
         Long affectedBits = redisTemplate.execute(
                 SET_BITS_SCRIPT,
                 List.of(bitmapKey),
-                offsets.toArray(String[]::new)
+                offsets.toArray()
         );
         if (affectedBits == null || affectedBits.longValue() != offsets.size()) {
             throw new IllegalStateException("set bloom bits returned unexpected result");
@@ -1091,6 +1406,8 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
 
 ## 5.8 完整修改 ShortLinkBloomInitializer.java
 
+初始化器只在成功发布后记录完成；MySQL 扫描异常时会安全中止自己持有的重建。
+
 ```java
 package com.tam.notification.config;
 
@@ -1107,10 +1424,12 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** 启动预热，并在运行期间检测 UTC 时间片轮换。 */
+/**
+ * 启动预热，并在运行期间检测 UTC 时间片轮换。
+ */
 @Slf4j
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE) // 优先级最高
 public class ShortLinkBloomInitializer implements ApplicationRunner {
 
     private final ShortLinkMappingRepository mappingRepository;
@@ -1130,8 +1449,7 @@ public class ShortLinkBloomInitializer implements ApplicationRunner {
         ensureCurrentSliceReady();
     }
 
-    @Scheduled(fixedDelayString =
-            "${notification.shortlink.bloom.rebuild-check-interval-ms:60000}")
+    @Scheduled(fixedDelayString = "${notification.shortlink.bloom.rebuild-check-interval-ms:60000}")
     public void ensureCurrentSliceReady() {
         if (shortLinkProtection.isBloomReady()) {
             return;
@@ -1142,6 +1460,8 @@ public class ShortLinkBloomInitializer implements ApplicationRunner {
             return;
         }
 
+        boolean rebuildStarted = false;
+
         try {
             // CAS 等待期间，另一个执行者可能已经完成。
             if (shortLinkProtection.isBloomReady()) {
@@ -1150,14 +1470,23 @@ public class ShortLinkBloomInitializer implements ApplicationRunner {
             if (!shortLinkProtection.beginBloomRebuild()) {
                 return;
             }
+            rebuildStarted = true;
 
-            List<String> shortCodes =
-                    mappingRepository.findAllActiveShortCodesAcrossTenants();
-            shortLinkProtection.completeBloomRebuild(shortCodes);
+            List<String> shortCodes = mappingRepository.findAllActiveShortCodesAcrossTenants();
+            boolean completed = shortLinkProtection.completeBloomRebuild(shortCodes);
+            // complete 已负责发布或安全中止，避免 catch 中重复操作。
+            rebuildStarted = false;
 
-            log.info("short-link bloom current slice initialized, count={}",
-                    shortCodes.size());
+            if (!completed) {
+                log.warn("short-link bloom rebuild was not published");
+                return;
+            }
+
+            log.info("short-link bloom current slice initialized, count={}", shortCodes.size());
         } catch (RuntimeException exception) {
+            if (rebuildStarted) {
+                shortLinkProtection.abortBloomRebuild();
+            }
             // ready 缺失时查询自动放行 MySQL，不能阻止应用启动。
             log.error("initialize current bloom slice failed", exception);
         } finally {
@@ -1189,6 +1518,8 @@ notification:
 
 ## 5.10 修改 ShortLinkRedisKeysTest.java
 
+锁、ready、注册表和所有时间片必须共享 `{bloom:v3}` Hash Tag。
+
 ```java
 package com.tam.notification.shortlink;
 
@@ -1197,8 +1528,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class ShortLinkRedisKeysTest {
-
+public class ShortLinkRedisKeysTest {
     @Test
     void sameShortCodeKeysShouldUseSameSlotAndStableFormat() {
         String code = "aZ8k2LmP";
@@ -1223,6 +1553,11 @@ class ShortLinkRedisKeysTest {
                 RedisClusterSlot.slot(ShortLinkRedisKeys.bloomSlice(1723809600L)));
         assertEquals(expectedSlot,
                 RedisClusterSlot.slot(ShortLinkRedisKeys.bloomSlice(1723831200L)));
+
+        assertEquals(
+                expectedSlot,
+                RedisClusterSlot.slot(ShortLinkRedisKeys.bloomRebuildLock())
+        );
     }
 
     @Test
@@ -1373,9 +1708,12 @@ class RedisShortLinkProtectionFailOpenTest {
 
 ## 5.13 新增启动预热编排测试
 
-```java
-package com.tam.notification.config;
+除了成功重建，还验证 MySQL 扫描失败后一定调用安全中止。
 
+```java
+package com.tam.notification.shortlink;
+
+import com.tam.notification.config.ShortLinkBloomInitializer;
 import com.tam.notification.domain.shortlink.ShortLinkMappingRepository;
 import com.tam.notification.domain.shortlink.ShortLinkProtection;
 import org.junit.jupiter.api.Test;
@@ -1395,9 +1733,11 @@ class ShortLinkBloomInitializerTest {
         when(protection.beginBloomRebuild()).thenReturn(true);
         when(repository.findAllActiveShortCodesAcrossTenants())
                 .thenReturn(List.of("Ab12Cd34", "Ef56Gh78"));
+        when(protection.completeBloomRebuild(
+                List.of("Ab12Cd34", "Ef56Gh78")
+        )).thenReturn(true);
 
-        ShortLinkBloomInitializer initializer =
-                new ShortLinkBloomInitializer(repository, protection);
+        ShortLinkBloomInitializer initializer = new ShortLinkBloomInitializer(repository, protection);
         initializer.run(mock(ApplicationArguments.class));
 
         verify(repository).findAllActiveShortCodesAcrossTenants();
@@ -1405,47 +1745,65 @@ class ShortLinkBloomInitializerTest {
                 List.of("Ab12Cd34", "Ef56Gh78")
         );
     }
+
+    @Test
+    void databaseFailureShouldAbortOwnedRebuild() {
+        ShortLinkMappingRepository repository = mock(ShortLinkMappingRepository.class);
+        ShortLinkProtection protection = mock(ShortLinkProtection.class);
+        when(protection.isBloomReady()).thenReturn(false);
+        when(protection.beginBloomRebuild()).thenReturn(true);
+        when(repository.findAllActiveShortCodesAcrossTenants())
+                .thenThrow(new IllegalStateException("mysql unavailable"));
+
+        ShortLinkBloomInitializer initializer = new ShortLinkBloomInitializer(repository, protection);
+        initializer.run(mock(ApplicationArguments.class));
+
+        verify(protection).abortBloomRebuild();
+        verify(protection, never()).completeBloomRebuild(anyCollection());
+    }
 }
 ```
 
 ## 5.14 新增完整真实 Cluster 集成测试
 
-位置：
-
-```text
-notification-infrastructure/src/test/java/com/tam/notification/shortlink/RedisTimeSlicedBloomFilterIntegrationTest.java
-```
-
-该测试复用 Day18 的真实 Redis Cluster，不再引入另一套 Redis 容器。没有设置 `REDIS_CLUSTER_NODES` 时跳过；显式设置环境变量时，三个用例必须全部执行。
+真实六节点 Redis Cluster 覆盖分片轮换、总体误判率、内存占用、锁安全中止、锁过期拒绝，以及两个实例在第 500 条边界交错重建的回归场景。
 
 ```java
 package com.tam.notification.shortlink;
 
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.data.redis.connection.RedisClusterConfiguration;
 import org.springframework.data.redis.connection.RedisPassword;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
+import java.time.*;
+import java.util.AbstractCollection;
+import java.util.Iterator;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @EnabledIfEnvironmentVariable(named = "REDIS_CLUSTER_NODES", matches = ".+")
 class RedisTimeSlicedBloomFilterIntegrationTest {
+
+    private static final DefaultRedisScript<Long> MEMORY_USAGE_SCRIPT =
+            new DefaultRedisScript<>(
+                    "return redis.call('MEMORY', 'USAGE', KEYS[1])",
+                    Long.class
+            );
 
     private static LettuceConnectionFactory connectionFactory;
     private static StringRedisTemplate redisTemplate;
@@ -1500,7 +1858,7 @@ class RedisTimeSlicedBloomFilterIntegrationTest {
         // begin 已删除 ready，合法短码必须被放行，而不是返回 false。
         assertTrue(protection.mightContain("Ab12Cd34"));
 
-        protection.completeBloomRebuild(List.of("Ab12Cd34", "Ef56Gh78"));
+        assertTrue(protection.completeBloomRebuild(List.of("Ab12Cd34", "Ef56Gh78")));
         assertTrue(protection.isBloomReady());
         assertTrue(protection.mightContain("Ab12Cd34"));
         assertTrue(protection.mightContain("Ef56Gh78"));
@@ -1517,7 +1875,7 @@ class RedisTimeSlicedBloomFilterIntegrationTest {
         // 连续建立 4 个片；每片放一个固定样本，验证历史片查询。
         for (int slice = 0; slice < 4; slice++) {
             assertTrue(protection.beginBloomRebuild());
-            protection.completeBloomRebuild(List.of("slice-code-" + slice));
+            assertTrue(protection.completeBloomRebuild(List.of("slice-code-" + slice)));
             if (slice < 3) {
                 clock.advance(Duration.ofHours(1));
             }
@@ -1532,7 +1890,7 @@ class RedisTimeSlicedBloomFilterIntegrationTest {
         // 第 5 片完成后，第 1 片已经落在 4 片窗口之外。
         clock.advance(Duration.ofHours(1));
         assertTrue(protection.beginBloomRebuild());
-        protection.completeBloomRebuild(List.of("slice-code-4"));
+        assertTrue(protection.completeBloomRebuild(List.of("slice-code-4")));
 
         assertEquals(
                 Boolean.FALSE,
@@ -1556,7 +1914,7 @@ class RedisTimeSlicedBloomFilterIntegrationTest {
                     .toList();
 
             assertTrue(protection.beginBloomRebuild());
-            protection.completeBloomRebuild(codes);
+            assertTrue(protection.completeBloomRebuild(codes));
             if (slice < 3) {
                 clock.advance(Duration.ofHours(1));
             }
@@ -1567,12 +1925,19 @@ class RedisTimeSlicedBloomFilterIntegrationTest {
                 .filter(index -> protection.mightContain("absent-" + index))
                 .count();
         double actualRate = falsePositives / (double) samples;
+        List<Long> bitmapMemoryBytes = IntStream.range(0, 4)
+                .mapToObj(index -> ShortLinkRedisKeys.bloomSlice(
+                        clock.instant().minus(Duration.ofHours(index)).getEpochSecond()
+                ))
+                .map(this::memoryUsage)
+                .toList();
 
         System.out.printf(
-                "samples=%d, falsePositives=%d, actualRate=%.6f%n",
+                "samples=%d, falsePositives=%d, actualRate=%.6f, bitmapMemoryBytes=%s%n",
                 samples,
                 falsePositives,
-                actualRate
+                actualRate,
+                bitmapMemoryBytes
         );
 
         // 小样本允许波动；实际值必须记录，不能只口头声称约 1%。
@@ -1580,6 +1945,96 @@ class RedisTimeSlicedBloomFilterIntegrationTest {
                 actualRate <= 0.02,
                 "actual false positive rate is too high: " + actualRate
         );
+    }
+
+    private long memoryUsage(String key) {
+        Long result = redisTemplate.execute(
+                MEMORY_USAGE_SCRIPT,
+                List.of(key)
+        );
+
+        if (result != null) {
+            return result;
+        }
+        throw new IllegalStateException("MEMORY USAGE returned: " + result);
+    }
+
+    @Test
+    void concurrentRebuildShouldAllowOnlyLockOwnerToPublish() throws Exception {
+        MutableClock clock = new MutableClock(
+                Instant.parse("2026-08-16T00:00:00Z")
+        );
+        RedisShortLinkProtection first = protection(clock, 10_000, 4);
+        RedisShortLinkProtection second = protection(clock, 10_000, 4);
+
+        CountDownLatch firstBatchWritten = new CountDownLatch(1);
+        CountDownLatch allowFirstToFinish = new CountDownLatch(1);
+        CollectionWithPause codes = new CollectionWithPause(
+                1_000,
+                500,
+                firstBatchWritten,
+                allowFirstToFinish
+        );
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            assertTrue(first.beginBloomRebuild());
+            Future<Boolean> firstResult = executor.submit(
+                    () -> first.completeBloomRebuild(codes)
+            );
+
+            assertTrue(
+                    firstBatchWritten.await(5, TimeUnit.SECONDS),
+                    "first rebuild did not reach the batch boundary"
+            );
+
+            // 第二个实例不能删除第一个实例已经写好的批次。
+            assertFalse(second.beginBloomRebuild());
+
+            allowFirstToFinish.countDown();
+            assertTrue(firstResult.get(5, TimeUnit.SECONDS));
+
+            // 同时检查暂停点前后的数据，证明发布的是完整快照。
+            assertTrue(first.mightContain("concurrent-code-0"));
+            assertTrue(first.mightContain("concurrent-code-999"));
+        } finally {
+            allowFirstToFinish.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void abortShouldReleaseOwnedLockAndAllowEmptySnapshotRebuild() {
+        MutableClock clock = new MutableClock(
+                Instant.parse("2026-08-16T00:00:00Z")
+        );
+        RedisShortLinkProtection first = protection(clock, 10_000, 4);
+        RedisShortLinkProtection second = protection(clock, 10_000, 4);
+
+        assertTrue(first.beginBloomRebuild());
+        first.abortBloomRebuild();
+
+        // 中止脚本释放自己的 token 后，另一个实例可以立即接管。
+        assertTrue(second.beginBloomRebuild());
+        assertTrue(second.completeBloomRebuild(List.of()));
+
+        // 空快照也必须创建可信的当前 Bitmap，而不能永久 fail-open。
+        assertTrue(second.isBloomReady());
+    }
+
+    @Test
+    void instanceThatLostItsTokenMustNotPublishReady() {
+        MutableClock clock = new MutableClock(
+                Instant.parse("2026-08-16T00:00:00Z")
+        );
+        RedisShortLinkProtection protection = protection(clock, 10_000, 4);
+
+        assertTrue(protection.beginBloomRebuild());
+
+        // 模拟锁 TTL 到期；旧实例的批次写入和 ready 发布都必须被拒绝。
+        redisTemplate.delete(ShortLinkRedisKeys.bloomRebuildLock());
+        assertFalse(protection.completeBloomRebuild(List.of("must-not-publish")));
+        assertEquals(Boolean.FALSE, redisTemplate.hasKey(ShortLinkRedisKeys.bloomReady()));
     }
 
     private RedisShortLinkProtection protection(
@@ -1618,8 +2073,79 @@ class RedisTimeSlicedBloomFilterIntegrationTest {
         // 所有 Key 共享 {bloom:v3}，一次 DEL 不会产生 CROSSSLOT。
         redisTemplate.delete(List.of(
                 ShortLinkRedisKeys.bloomReady(),
+                ShortLinkRedisKeys.bloomRebuildLock(),
                 registryKey
         ));
+    }
+
+    /**
+     * 让第一个重建者在第 500 条已经写入 Redis 后暂停。
+     * 此时第二个实例尝试重建，可以稳定复现原实现的 DEL 竞态。
+     */
+    private static final class CollectionWithPause extends AbstractCollection<String> {
+        private final int size;
+        private final int pauseAfter;
+        private final CountDownLatch paused;
+        private final CountDownLatch resume;
+
+        private CollectionWithPause(
+                int size,
+                int pauseAfter,
+                CountDownLatch paused,
+                CountDownLatch resume
+        ) {
+            this.size = size;
+            this.pauseAfter = pauseAfter;
+            this.paused = paused;
+            this.resume = resume;
+        }
+
+        @Override
+        public Iterator<String> iterator() {
+            return new Iterator<>() {
+                private int index;
+                private boolean pauseCompleted;
+
+                @Override
+                public boolean hasNext() {
+                    if (index == pauseAfter && !pauseCompleted) {
+                        pauseCompleted = true;
+                        paused.countDown();
+                        awaitResume();
+                    }
+                    return index < size;
+                }
+
+                @Override
+                public String next() {
+                    if (!hasNext()) {
+                        throw new NoSuchElementException();
+                    }
+                    return "concurrent-code-" + index++;
+                }
+
+                private void awaitResume() {
+                    try {
+                        if (!resume.await(5, TimeUnit.SECONDS)) {
+                            throw new IllegalStateException(
+                                    "timed out waiting to resume rebuild"
+                            );
+                        }
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(
+                                "rebuild test interrupted",
+                                exception
+                        );
+                    }
+                }
+            };
+        }
+
+        @Override
+        public int size() {
+            return size;
+        }
     }
 
     private static final class MutableClock extends Clock {
@@ -1656,11 +2182,9 @@ class RedisTimeSlicedBloomFilterIntegrationTest {
 }
 ```
 
-测试清理只读取已知注册表，不执行无范围的 `KEYS *`。即使测试失败，Bitmap 自身 TTL 仍会清除临时片。
-
 ## 5.15 新增 docs/bloom-lifecycle.md
 
-```markdown
+````markdown
 # Short Link Bloom Lifecycle
 
 ## 决策
@@ -1670,6 +2194,7 @@ class RedisTimeSlicedBloomFilterIntegrationTest {
 - 每次轮换把 MySQL 中 ACTIVE 且未过期的短码完整重建到当前片。
 - 新短链在事务提交后增量写当前片。
 - ready 必须最后写；ready 不可信、重建中或 Redis 故障时一律 fail-open。
+- 完整重建使用同槽分布式锁；抢锁、撤销 ready、分批写入、发布和中止均校验随机 token。
 
 ## 参数口径
 
@@ -1680,12 +2205,13 @@ class RedisTimeSlicedBloomFilterIntegrationTest {
 
 ## 生命周期
 
-1. 删除 ready 和当前片。
+1. Lua 原子抢占带 TTL 的 token 锁，并删除 ready 和当前片。
 2. 查询 MySQL 有效短码。
-3. 每 500 个短码批量写 Bitmap。
-4. 设置 Bitmap TTL 并登记 ZSET。
-5. 写 ready=currentSlice。
+3. 每 500 个短码校验 token 后批量写 Bitmap。
+4. Lua 再次校验 token，设置 Bitmap TTL 并登记 ZSET。
+5. 在同一个 Lua 中写 ready=currentSlice，并释放重建锁。
 6. 删除窗口外片；TTL 作为兜底。
+7. MySQL 扫描、写入或发布失败时，比较 token 后安全中止；锁 TTL 作为最终兜底。
 
 ## 正确性边界
 
@@ -1693,11 +2219,36 @@ class RedisTimeSlicedBloomFilterIntegrationTest {
 - MySQL 是事实来源；Bloom 故障只影响性能。
 - 过期短码在历史片保留期间只可能带来额外回源，不会误伤合法短链。
 - 若增量写失败，删除 ready 并等待定时完整重建。
+- 多实例只有锁持有者可以删除当前片和发布 ready；锁过期的旧实例不能继续写批次或删除新锁。
 
 ## 实验结果
 
-记录日期、提交、样本数、每片写入数、理论总体误判率、实际误判数、实际误判率、Redis 内存和测试耗时。没有原始输出的数字不进入简历。
+- 记录日期：2026-08-16
+- 修复前基线提交：`90f2bbc08404fb18d6d999c7a6d86b864ca561cf`
+- 修复版本：当前工作区，提交后补充最终 commit
+- Redis：Redis 7，6 节点 Cluster
+- 实验参数：每片写入 2000 个短码，保留 4 片
+- 理论总体误判率：0.01
+- 不存在样本数：20000
+- 实际误判数：192
+- 实际误判率：0.009600
+- 当前片到最旧片 `MEMORY USAGE`：7256、3672、6232、7256 bytes
+- 时间分片测试耗时：12.24 秒
+- Maven 集群实验总耗时：14.075 秒
+- 双实例交错重建：第一个实例写完 500 条后暂停，第二个实例抢锁失败；最终第 0 条和第 999 条均命中
+- 锁安全实验：主动中止后另一实例可立即接管；锁 token 丢失后旧实例无法写批次或发布 ready
+
+原始输出：
+
+```text
+samples=20000, falsePositives=192, actualRate=0.009600,
+bitmapMemoryBytes=[7256, 3672, 6232, 7256]
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0,
+Time elapsed: 12.24 s
+BUILD SUCCESS
+Total time: 14.075 s
 ```
+````
 
 ---
 
@@ -1938,7 +2489,7 @@ ZSET 是主动、及时的生命周期管理；TTL 是应用长期停机、调�
 
 ## 7.13 多实例同时重建有什么风险，如何进一步演进？
 
-小规模版本依靠清 ready、幂等 SETBIT 和完整快照保证正确性，但会重复扫描数据库。数据量增大后应增加带随机 token 和 TTL 的分布式重建锁、主键游标分页、重建耗时指标，并防止锁过期后的旧实例发布 ready，可进一步加入 fencing token。
+如果只依靠清 ready 和幂等 SETBIT，实例 B 的 DEL 可能清除实例 A 已完成的批次，而实例 A 随后发布 ready，形成 false negative。最终版本使用带随机 token 和 TTL 的同槽分布式锁：抢锁和撤销 ready 原子执行，每批写入校验 token，发布 ready 时再次校验并原子释放锁。数据量继续增大后，还应加入锁续期、主键游标分页、重建耗时指标；若重建会操作无法由 Redis token 保护的外部资源，再进一步引入 fencing token。
 
 ## 7.14 这套方案最重要的正确性不变量是什么？
 

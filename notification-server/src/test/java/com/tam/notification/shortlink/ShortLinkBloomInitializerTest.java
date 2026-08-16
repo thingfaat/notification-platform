@@ -20,6 +20,9 @@ class ShortLinkBloomInitializerTest {
         when(protection.beginBloomRebuild()).thenReturn(true);
         when(repository.findAllActiveShortCodesAcrossTenants())
                 .thenReturn(List.of("Ab12Cd34", "Ef56Gh78"));
+        when(protection.completeBloomRebuild(
+                List.of("Ab12Cd34", "Ef56Gh78")
+        )).thenReturn(true);
 
         ShortLinkBloomInitializer initializer = new ShortLinkBloomInitializer(repository, protection);
         initializer.run(mock(ApplicationArguments.class));
@@ -28,5 +31,21 @@ class ShortLinkBloomInitializerTest {
         verify(protection).completeBloomRebuild(
                 List.of("Ab12Cd34", "Ef56Gh78")
         );
+    }
+
+    @Test
+    void databaseFailureShouldAbortOwnedRebuild() {
+        ShortLinkMappingRepository repository = mock(ShortLinkMappingRepository.class);
+        ShortLinkProtection protection = mock(ShortLinkProtection.class);
+        when(protection.isBloomReady()).thenReturn(false);
+        when(protection.beginBloomRebuild()).thenReturn(true);
+        when(repository.findAllActiveShortCodesAcrossTenants())
+                .thenThrow(new IllegalStateException("mysql unavailable"));
+
+        ShortLinkBloomInitializer initializer = new ShortLinkBloomInitializer(repository, protection);
+        initializer.run(mock(ApplicationArguments.class));
+
+        verify(protection).abortBloomRebuild();
+        verify(protection, never()).completeBloomRebuild(anyCollection());
     }
 }

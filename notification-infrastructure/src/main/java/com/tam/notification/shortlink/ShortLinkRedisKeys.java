@@ -43,6 +43,16 @@ public final class ShortLinkRedisKeys {
         return "shortlink:{" + BLOOM_TAG + "}:slices";
     }
 
+    /**
+     * Bloom 完整重建的分布式锁。
+     * <p>
+     * 所有 Bloom Key 都使用 {bloom:v3} Hash Tag，
+     * 保证后续多 Key Lua 可以在 Redis Cluster 中执行。
+     */
+    public static String bloomRebuildLock() {
+        return "shortlink:{" + BLOOM_TAG + "}:rebuild:lock";
+    }
+
     private static String requireShortCode(String shortCode) {
         if (shortCode == null || shortCode.isBlank()) {
             throw new IllegalArgumentException("shortCode不能为空");

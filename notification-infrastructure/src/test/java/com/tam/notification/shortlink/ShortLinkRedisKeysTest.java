@@ -30,6 +30,11 @@ public class ShortLinkRedisKeysTest {
                 RedisClusterSlot.slot(ShortLinkRedisKeys.bloomSlice(1723809600L)));
         assertEquals(expectedSlot,
                 RedisClusterSlot.slot(ShortLinkRedisKeys.bloomSlice(1723831200L)));
+
+        assertEquals(
+                expectedSlot,
+                RedisClusterSlot.slot(ShortLinkRedisKeys.bloomRebuildLock())
+        );
     }
 
     @Test

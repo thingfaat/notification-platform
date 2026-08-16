@@ -49,6 +49,8 @@ public class ShortLinkBloomInitializer implements ApplicationRunner {
             return;
         }
 
+        boolean rebuildStarted = false;
+
         try {
             // CAS 等待期间，另一个执行者可能已经完成。
             if (shortLinkProtection.isBloomReady()) {
@@ -57,12 +59,23 @@ public class ShortLinkBloomInitializer implements ApplicationRunner {
             if (!shortLinkProtection.beginBloomRebuild()) {
                 return;
             }
+            rebuildStarted = true;
 
             List<String> shortCodes = mappingRepository.findAllActiveShortCodesAcrossTenants();
-            shortLinkProtection.completeBloomRebuild(shortCodes);
+            boolean completed = shortLinkProtection.completeBloomRebuild(shortCodes);
+            // complete 已负责发布或安全中止，避免 catch 中重复操作。
+            rebuildStarted = false;
+
+            if (!completed) {
+                log.warn("short-link bloom rebuild was not published");
+                return;
+            }
 
             log.info("short-link bloom current slice initialized, count={}", shortCodes.size());
         } catch (RuntimeException exception) {
+            if (rebuildStarted) {
+                shortLinkProtection.abortBloomRebuild();
+            }
             // ready 缺失时查询自动放行 MySQL，不能阻止应用启动。
             log.error("initialize current bloom slice failed", exception);
         } finally {
