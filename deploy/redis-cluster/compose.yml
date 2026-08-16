@@ -1,0 +1,52 @@
+name: notification-redis-cluster
+
+x-redis-common: &redis-common
+  image: redis:7
+  restart: unless-stopped
+  network_mode: host
+
+# 三个主节点是 Cluster 的最小分片规模；再增加三个副本，才能验证主节点停止后的自动晋升
+services:
+  redis-7001:
+    <<: *redis-common
+    container_name: notification-redis-7001
+    command: [ "redis-server", "--port", "7001", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--requirepass", "notification123", "--masterauth", "notification123" ]
+    volumes: [ 'redis-7001-data:/data' ]
+
+  redis-7002:
+    <<: *redis-common
+    container_name: notification-redis-7002
+    command: [ "redis-server", "--port", "7002", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--requirepass", "notification123", "--masterauth", "notification123" ]
+    volumes: [ "redis-7002-data:/data" ]
+
+  redis-7003:
+    <<: *redis-common
+    container_name: notification-redis-7003
+    command: [ "redis-server", "--port", "7003", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--requirepass", "notification123", "--masterauth", "notification123" ]
+    volumes: [ "redis-7003-data:/data" ]
+
+  redis-7004:
+    <<: *redis-common
+    container_name: notification-redis-7004
+    command: [ "redis-server", "--port", "7004", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--requirepass", "notification123", "--masterauth", "notification123" ]
+    volumes: [ "redis-7004-data:/data" ]
+
+  redis-7005:
+    <<: *redis-common
+    container_name: notification-redis-7005
+    command: [ "redis-server", "--port", "7005", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--requirepass", "notification123", "--masterauth", "notification123" ]
+    volumes: [ "redis-7005-data:/data" ]
+
+  redis-7006:
+    <<: *redis-common
+    container_name: notification-redis-7006
+    command: [ "redis-server", "--port", "7006", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--requirepass", "notification123", "--masterauth", "notification123" ]
+    volumes: [ "redis-7006-data:/data" ]
+
+volumes:
+  redis-7001-data:
+  redis-7002-data:
+  redis-7003-data:
+  redis-7004-data:
+  redis-7005-data:
+  redis-7006-data:

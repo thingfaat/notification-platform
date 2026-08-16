@@ -1,0 +1,22 @@
+spring:
+  config:
+    activate:
+      on-profile: redis-cluster
+  data:
+    redis:
+      # 节点只用于初始拓扑发现，客户端会根据slot路由到真实节点
+      cluster:
+        nodes: ${REDIS_CLUSTER_NODES:127.0.0.1:7001,127.0.0.1:7002,127.0.0.1:7003,127.0.0.1:7004,127.0.0.1:7005,127.0.0.1:7006}
+        max-redirects: 5
+      password: ${REDIS_CLUSTER_PASSWORD:notification123}
+      connect-timeout: 2s
+      timeout: 2s
+
+      lettuce:
+        cluster:
+          refresh:
+            # MOVED、ASK、重连等事件触发拓扑刷新
+            adaptive: true
+            # 周期刷新用于兜底长期没有触发事件的拓扑变化
+            period: 5s
+            dynamic-refresh-sources: true

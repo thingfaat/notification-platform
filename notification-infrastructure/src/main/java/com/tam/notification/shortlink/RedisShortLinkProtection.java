@@ -28,9 +28,9 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
     // 负缓存key前缀
     private static final String NEGATIVE_KEY_PREFIX = "shortlink:redirect:negative:";
     // 布隆过滤器key
-    private static final String BLOOM_BITMAP_KEY = "shortlink:bloom:codes:v1";
+    private static final String BLOOM_BITMAP_KEY = ShortLinkRedisKeys.bloomBitmap();
     // 布隆过滤器就绪key
-    private static final String BLOOM_READY_KEY = "shortlink:bloom:ready:v1";
+    private static final String BLOOM_READY_KEY = ShortLinkRedisKeys.bloomReady();
 
     /**
      * 本机是否可以信任 Redis 中的 Bloom Bitmap。
@@ -390,6 +390,6 @@ public class RedisShortLinkProtection implements ShortLinkProtection {
     }
 
     private String negativeKey(String shortCode) {
-        return NEGATIVE_KEY_PREFIX + shortCode;
+        return ShortLinkRedisKeys.negative(shortCode);
     }
 }
