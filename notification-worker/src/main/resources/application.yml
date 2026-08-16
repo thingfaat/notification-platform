@@ -30,10 +30,21 @@ rocketmq:
   name-server: ${ROCKETMQ_NAME_SERVER:127.0.0.1:9876}
 
 notification:
+  worker:
+    # 实验时显式传 WORKER_INSTANCE_ID=worker-a / worker-b
+    # 未传时使用随机 UUID，保证两个本地 JVM 不会重名。
+    instance-id: ${WORKER_INSTANCE_ID:${random.uuid}}
+
   mq:
     topic: notification-send-topic
     consumer-group: notification-worker-group
     dlq-consumer-group: notification-worker-dlq-group
+
+    broadcast-probe:
+      # 默认关闭，避免普通开发启动额外 Consumer
+      enabled: ${MQ_BROADCAST_PROBE_ENABLED:false}
+      topic: notification-worker-probe-topic
+      consumer-group: notification-worker-probe-broadcast-group
 
   send:
     max-attempts: 3

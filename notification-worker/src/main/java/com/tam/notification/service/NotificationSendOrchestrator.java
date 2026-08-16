@@ -28,15 +28,12 @@ public class NotificationSendOrchestrator {
     private String consumerGroup;
 
     /**
-     * 发送消息，组织本地事务和渠道发送，
+     * 组织“限流->准备事务->事务外渠道调用->完成事务”
      *
      * @param event
      */
     public void send(NotificationSendEvent event) {
-        /**
-         * 限流必须在prepare之前
-         * 被限流时不进入SENDING，也不创建SendRecord
-         */
+        // 限流必须在prepare之前，被限流时不进入SENDING，也不创建SendRecord
         if (!rateLimitService.allowOrDefer(event)) {
             return;
         }
@@ -45,11 +42,23 @@ public class NotificationSendOrchestrator {
 
         // mq重复投递，但是event已经完整执行
         if (optional.isEmpty()) {
+            // consume_record 已存在，说明同一消费组已经完整处理过该 event。
+            log.info("重复投递已被消费记录拦截，eventId={}, messageId={}",
+                    event.eventId(),
+                    event.messageId()
+            );
             return;
         }
 
         // 获取发送通道
         PreparedSend prepared = optional.get();
+        log.info(
+                "开始调用渠道，eventId={}, messageId={}, attemptNo={}, idempotencyKey={}",
+                event.eventId(),
+                prepared.messageId(),
+                prepared.attemptNo(),
+                prepared.idempotencyKey()
+        );
         ChannelSendResult result = channelSendService.send(
                 new ChannelSendCommand(
                         prepared.messageId(),
