@@ -55,6 +55,11 @@
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
         <spring-boot-maven-plugin.version>3.5.2</spring-boot-maven-plugin.version>
+        <!--
+          Day23 固定使用知识星球 short_link 的 5.5.1 做可比实验。
+          升级版本必须单独核对 YAML、SPI 和 Spring Boot 兼容性，不能自动漂移。
+        -->
+        <shardingsphere.version>5.5.1</shardingsphere.version>
     </properties>
 
     <dependencyManagement>
@@ -159,6 +164,13 @@
                 <groupId>com.tam.notification</groupId>
                 <artifactId>notification-shortlink</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+
+            <!-- ShardingSphere 只由需要的模块声明；版本在父 POM 统一管理。 -->
+            <dependency>
+                <groupId>org.apache.shardingsphere</groupId>
+                <artifactId>shardingsphere-jdbc</artifactId>
+                <version>${shardingsphere.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

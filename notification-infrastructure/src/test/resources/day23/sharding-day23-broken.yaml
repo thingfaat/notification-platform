@@ -1,0 +1,56 @@
+databaseName: notification_day23_broken
+
+dataSources:
+  ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: $${day23.ds0.jdbc-url::}
+    username: $${day23.ds0.username::}
+    password: $${day23.ds0.password::}
+    maximumPoolSize: 4
+  ds_1:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: $${day23.ds1.jdbc-url::}
+    username: $${day23.ds1.username::}
+    password: $${day23.ds1.password::}
+    maximumPoolSize: 4
+
+rules:
+  - !SHARDING
+    tables:
+      notify_send_record:
+        actualDataNodes: ds_$->{0..1}.notify_send_record_$->{0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: message_id
+            shardingAlgorithmName: broken-database-inline
+        tableStrategy:
+          standard:
+            shardingColumn: message_id
+            shardingAlgorithmName: broken-table-inline
+        keyGenerateStrategy:
+          column: id
+          keyGeneratorName: day23-snowflake
+
+    shardingAlgorithms:
+      # 错误：库索引和表索引使用同一值直接取模，二者存在确定相关性。
+      broken-database-inline:
+        type: INLINE
+        props:
+          algorithm-expression: 'ds_$->{message_id % 2}'
+      broken-table-inline:
+        type: INLINE
+        props:
+          algorithm-expression: 'notify_send_record_$->{message_id % 4}'
+
+    keyGenerators:
+      day23-snowflake:
+        type: SNOWFLAKE
+        props:
+          worker-id: 24
+          max-vibration-offset: 7
+
+props:
+  sql-show: true
+  sql-simple: false

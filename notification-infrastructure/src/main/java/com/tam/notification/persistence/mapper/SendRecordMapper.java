@@ -17,9 +17,11 @@ public interface SendRecordMapper extends BaseMapper<SendRecordDO> {
                 provider_message_id = #{providerMessageId},
                 finished_at = #{finishedAt}
             WHERE id = #{id}
+              AND message_id = #{messageId}
               AND send_status = 'PROCESSING'
             """)
     int markSuccess(@Param("id") Long id,
+                    @Param("messageId") Long messageId,
                     @Param("providerMessageId") String providerMessageId,
                     @Param("finishedAt") LocalDateTime finishedAt
     );
@@ -32,9 +34,11 @@ public interface SendRecordMapper extends BaseMapper<SendRecordDO> {
                 failure_reason = #{failureReason},
                 finished_at = #{finishedAt}
             WHERE id = #{id}
+              AND message_id = #{messageId}
               AND send_status = 'PROCESSING'
             """)
     int markFailed(@Param("id") Long id,
+                   @Param("messageId") Long messageId,
                    @Param("failureCode") String failureCode,
                    @Param("failureReason") String failureReason,
                    @Param("finishedAt") LocalDateTime finishedAt

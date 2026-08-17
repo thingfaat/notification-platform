@@ -1,0 +1,94 @@
+databaseName: notification_day23
+
+dataSources:
+  ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: $${day23.ds0.jdbc-url::}
+    username: $${day23.ds0.username::}
+    password: $${day23.ds0.password::}
+    maximumPoolSize: 4
+  ds_1:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: $${day23.ds1.jdbc-url::}
+    username: $${day23.ds1.username::}
+    password: $${day23.ds1.password::}
+    maximumPoolSize: 4
+
+rules:
+  - !SHARDING
+    tables:
+      # notify_message 只为绑定表实验建立最小 PoC，不代表本日正式迁移该表。
+      notify_message:
+        actualDataNodes: ds_$->{0..1}.notify_message_$->{0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: id
+            shardingAlgorithmName: message-database-inline
+        tableStrategy:
+          standard:
+            shardingColumn: id
+            shardingAlgorithmName: message-table-inline
+        keyGenerateStrategy:
+          column: id
+          keyGeneratorName: day23-snowflake
+
+      notify_send_record:
+        actualDataNodes: ds_$->{0..1}.notify_send_record_$->{0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: message_id
+            shardingAlgorithmName: send-record-database-inline
+        tableStrategy:
+          standard:
+            shardingColumn: message_id
+            shardingAlgorithmName: send-record-table-inline
+        keyGenerateStrategy:
+          column: id
+          keyGeneratorName: day23-snowflake
+
+    # 两张表必须使用同一 messageId 的相同库/表位段，绑定声明才成立。
+    bindingTables:
+      - notify_message,notify_send_record
+
+    shardingAlgorithms:
+      message-database-inline:
+        type: INLINE
+        props:
+          algorithm-expression: 'ds_$->{(id >> 2) & 1}'
+          allow-range-query-with-inline-sharding: true
+      message-table-inline:
+        type: INLINE
+        props:
+          algorithm-expression: 'notify_message_$->{id & 3}'
+          allow-range-query-with-inline-sharding: true
+      send-record-database-inline:
+        type: INLINE
+        props:
+          algorithm-expression: 'ds_$->{(message_id >> 2) & 1}'
+          allow-range-query-with-inline-sharding: true
+      send-record-table-inline:
+        type: INLINE
+        props:
+          algorithm-expression: 'notify_send_record_$->{message_id & 3}'
+          allow-range-query-with-inline-sharding: true
+
+    keyGenerators:
+      day23-snowflake:
+        type: SNOWFLAKE
+        props:
+          # 单机 PoC 固定 worker-id；多实例生产环境必须保证互斥分配。
+          worker-id: 23
+          # 总物理节点为 8，按官方建议配置为 2^3 - 1。
+          max-vibration-offset: 7
+
+  # 5.5.1 的广播表是独立规则，不再写在 !SHARDING 内。
+  - !BROADCAST
+    tables:
+      - sys_tenant
+
+props:
+  # Day23 必须观察逻辑 SQL 与 Actual SQL，不能只看断言结果。
+  sql-show: true
+  sql-simple: false

@@ -109,7 +109,12 @@ public class MessageSendTransactionService {
         message.changeStatus(MessageStatus.SENT);
         messageRepository.update(message);
 
-        boolean success = sendRecordRepository.markSuccess(prepared.sendRecordId(), result.providerMessageId(), LocalDateTime.now());
+        boolean success = sendRecordRepository.markSuccess(
+                prepared.sendRecordId(),
+                prepared.messageId(),
+                result.providerMessageId(),
+                LocalDateTime.now()
+        );
         if (!success) {
             throw new IllegalStateException("完成发送时更新发送记录异常");
         }
@@ -150,7 +155,13 @@ public class MessageSendTransactionService {
         }
         messageRepository.update(message);
 
-        boolean success = sendRecordRepository.markFailed(prepared.sendRecordId(), result.errorCode(), result.errorMessage(), LocalDateTime.now());
+        boolean success = sendRecordRepository.markFailed(
+                prepared.sendRecordId(),
+                prepared.messageId(),
+                result.errorCode(),
+                result.errorMessage(),
+                LocalDateTime.now()
+        );
         if (!success) {
             throw new IllegalStateException("完成发送时更新发送记录异常");
         }
@@ -194,6 +205,7 @@ public class MessageSendTransactionService {
 
         boolean recordUpdated = sendRecordRepository.markFailed(
                 sendRecord.getId(),
+                sendRecord.getMessageId(),
                 failureCode,
                 failureReason,
                 LocalDateTime.now()

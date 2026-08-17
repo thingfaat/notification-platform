@@ -42,13 +42,35 @@ public class SendRecordRepositoryImpl implements SendRecordRepository {
     }
 
     @Override
-    public boolean markSuccess(Long id, String providerMessageId, LocalDateTime finishedAt) {
-        return sendRecordMapper.markSuccess(id, providerMessageId, finishedAt) == 1;
+    public boolean markSuccess(
+            Long id,
+            Long messageId,
+            String providerMessageId,
+            LocalDateTime finishedAt
+    ) {
+        return sendRecordMapper.markSuccess(
+                id,
+                messageId,
+                providerMessageId,
+                finishedAt
+        ) == 1;
     }
 
     @Override
-    public boolean markFailed(Long id, String failureCode, String failureReason, LocalDateTime finishedAt) {
-        return sendRecordMapper.markFailed(id, failureCode, failureReason, finishedAt) == 1;
+    public boolean markFailed(
+            Long id,
+            Long messageId,
+            String failureCode,
+            String failureReason,
+            LocalDateTime finishedAt
+    ) {
+        return sendRecordMapper.markFailed(
+                id,
+                messageId,
+                failureCode,
+                failureReason,
+                finishedAt
+        ) == 1;
     }
 
     private SendRecordDO toDO(SendRecord record) {

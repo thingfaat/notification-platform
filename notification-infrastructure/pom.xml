@@ -95,5 +95,15 @@
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
         </dependency>
+
+        <!--
+          Day23 只在集成测试中创建 ShardingSphere DataSource。
+          test scope 保证 Server/Worker 的默认运行时仍连接现有单库。
+        -->
+        <dependency>
+            <groupId>org.apache.shardingsphere</groupId>
+            <artifactId>shardingsphere-jdbc</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>
