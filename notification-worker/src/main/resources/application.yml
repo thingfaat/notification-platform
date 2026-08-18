@@ -94,10 +94,12 @@ management:
       percentiles-histogram:
         http.server.requests: true
         notification.channel.call.duration: true
+        notification.mq.consume.duration: true
 
       slo:
         http.server.requests: 50ms,100ms,200ms,500ms,1s,2s
         notification.channel.call.duration: 50ms,100ms,200ms,500ms,1s,2s
+        notification.mq.consume.duration: 50ms,100ms,500ms,1s,2s,5s,10s
 
 logging:
   pattern:

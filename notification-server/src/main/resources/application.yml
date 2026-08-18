@@ -36,7 +36,16 @@ notification:
     batch-size: 100
     # PROCESSING超过30秒认为实例可能已经死亡
     claim-timeout-seconds: 30
-    max-retry-count: 3
+    # 当前退避最大 60 秒；20 次可覆盖分钟级 Broker 故障并自动恢复。
+    # 永久失败最终仍进入 DEAD，不能无限重试。
+    max-retry-count: 20
+  observability:
+    outbox:
+      # 后台刷新数据库快照；Prometheus 抓取不直接执行 SQL。
+      refresh-interval-ms: 5000
+    bloom:
+      # 独立探测 Bloom 信任状态，故障实验可在 15 秒内被观察。
+      refresh-interval-ms: 15000
   shortlink:
     hot-cache:
       max-size: 10000

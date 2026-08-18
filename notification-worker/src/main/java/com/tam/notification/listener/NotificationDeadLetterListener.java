@@ -17,6 +17,7 @@ import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.apache.rocketmq.spring.core.RocketMQPushConsumerLifecycleListener;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import com.tam.notification.observability.MqConsumeMetrics;
 
 import java.nio.charset.StandardCharsets;
 
@@ -35,6 +36,7 @@ public class NotificationDeadLetterListener implements RocketMQListener<MessageE
     private final ObjectMapper objectMapper;
     private final MessageSendTransactionService transactionService;
     private final WorkerIdentity workerIdentity;
+    private final MqConsumeMetrics mqConsumeMetrics;
 
     @Value("${notification.mq.dlq-consumer-group}")
     private String dlqConsumerGroup;
@@ -46,6 +48,9 @@ public class NotificationDeadLetterListener implements RocketMQListener<MessageE
 
     @Override
     public void onMessage(final MessageExt message) {
+        // 先计数再反序列化，毒消息即使无法解析也不能从 DLQ 指标中消失。
+        mqConsumeMetrics.recordDlqReceived();
+
         String payload = new String(message.getBody(), StandardCharsets.UTF_8);
 
         NotificationSendEvent event = deserialize(payload);

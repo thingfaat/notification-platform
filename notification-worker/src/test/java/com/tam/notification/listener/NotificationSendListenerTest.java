@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tam.notification.common.tenant.TenantContext;
 import com.tam.notification.common.trace.TraceContext;
 import com.tam.notification.domain.outbox.NotificationSendEvent;
+import com.tam.notification.observability.MqConsumeMetrics;
 import com.tam.notification.service.NotificationSendOrchestrator;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.common.message.MessageExt;
@@ -32,11 +33,13 @@ public class NotificationSendListenerTest {
         );
         WorkerIdentity workerIdentity = mock(WorkerIdentity.class);
         when(workerIdentity.instanceId()).thenReturn("worker-a");
+        MqConsumeMetrics metrics = mock(MqConsumeMetrics.class);
 
         NotificationSendListener listener = new NotificationSendListener(
                 objectMapper,
                 orchestrator,
-                workerIdentity
+                workerIdentity,
+                metrics
         );
 
         NotificationSendEvent event = new NotificationSendEvent(
@@ -84,11 +87,13 @@ public class NotificationSendListenerTest {
         );
         WorkerIdentity workerIdentity = mock(WorkerIdentity.class);
         DefaultMQPushConsumer consumer = mock(DefaultMQPushConsumer.class);
+        MqConsumeMetrics metrics = mock(MqConsumeMetrics.class);
 
         NotificationSendListener listener = new NotificationSendListener(
                 objectMapper,
                 orchestrator,
-                workerIdentity
+                workerIdentity,
+                metrics
         );
 
         listener.prepareStart(consumer);

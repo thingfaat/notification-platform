@@ -1,0 +1,21 @@
+global:
+  resolve_timeout: 30s
+  smtp_smarthost: mailhog:1025
+  smtp_from: alertmanager@notification.local
+  smtp_require_tls: false
+
+route:
+  receiver: local-mail
+  group_by:
+    - alertname
+    - job
+    - severity
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 4h
+
+receivers:
+  - name: local-mail
+    email_configs:
+      - to: day26@notification.local
+        send_resolved: true

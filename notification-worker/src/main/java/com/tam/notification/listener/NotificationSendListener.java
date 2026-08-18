@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tam.notification.common.tenant.TenantContext;
 import com.tam.notification.common.trace.TraceContext;
 import com.tam.notification.domain.outbox.NotificationSendEvent;
+import com.tam.notification.observability.MqConsumeMetrics;
 import com.tam.notification.service.NotificationSendOrchestrator;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
@@ -33,6 +35,7 @@ public class NotificationSendListener implements RocketMQListener<MessageExt>, R
     private final ObjectMapper objectMapper;
     private final NotificationSendOrchestrator sendOrchestrator;
     private final WorkerIdentity workerIdentity;
+    private final MqConsumeMetrics mqConsumeMetrics;
 
     @Override
     public void prepareStart(final DefaultMQPushConsumer consumer) {
@@ -42,31 +45,38 @@ public class NotificationSendListener implements RocketMQListener<MessageExt>, R
 
     @Override
     public void onMessage(final MessageExt message) {
-        final var payload = new String(message.getBody(), StandardCharsets.UTF_8);
-
-        NotificationSendEvent event = deserialize(payload);
-        log.info(
-                "收到通知消息，worker={}, eventId={}, messageId={}, mqMsgId={}, queueId={}, queueOffset={}, reconsumeTimes={}",
-                workerIdentity.instanceId(),
-                event.eventId(),
-                event.messageId(),
-                message.getMsgId(),
-                message.getQueueId(),
-                message.getQueueOffset(),
-                message.getReconsumeTimes()
-        );
-
+        Timer.Sample sample = mqConsumeMetrics.start(message.getReconsumeTimes());
+        
         try {
-            TenantContext.setTenantId(event.tenantId());
-            if (event.traceId() != null) {
-                TraceContext.setTraceId(event.traceId());
+            final var payload = new String(message.getBody(), StandardCharsets.UTF_8);
+
+            NotificationSendEvent event = deserialize(payload);
+            log.info(
+                    "收到通知消息，worker={}, eventId={}, messageId={}, mqMsgId={}, queueId={}, queueOffset={}, reconsumeTimes={}",
+                    workerIdentity.instanceId(),
+                    event.eventId(),
+                    event.messageId(),
+                    message.getMsgId(),
+                    message.getQueueId(),
+                    message.getQueueOffset(),
+                    message.getReconsumeTimes()
+            );
+
+            try {
+                TenantContext.setTenantId(event.tenantId());
+                if (event.traceId() != null) {
+                    TraceContext.setTraceId(event.traceId());
+                }
+                // 不吞异常：异常必须继续抛给RocketMQ，才能触发重投和DLQ
+                sendOrchestrator.send(event);
+            } finally {
+                // MQ 消费线程会复用，不清理会造成跨租户、跨 Trace 串线
+                TenantContext.clear();
+                TraceContext.clear();
             }
-            // 不吞异常：异常必须继续抛给RocketMQ，才能触发重投和DLQ
-            sendOrchestrator.send(event);
-        } finally {
-            // MQ 消费线程会复用，不清理会造成跨租户、跨 Trace 串线
-            TenantContext.clear();
-            TraceContext.clear();
+        } catch (RuntimeException | Error exception) {
+            mqConsumeMetrics.recordFailure(sample);
+            throw exception;
         }
     }
 

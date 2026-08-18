@@ -1,0 +1,128 @@
+groups:
+  - name: notification-platform-availability
+    rules:
+      - alert: NotificationTargetDown
+        expr: up{job=~"notification-server|notification-worker|rocketmq-broker"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} target is down"
+          description: "Prometheus 连续 30 秒无法抓取 {{ $labels.instance }}。"
+
+      - alert: OutboxMetricsRefreshFailed
+        expr: notification_outbox_metrics_refresh_success == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Outbox 指标刷新失败"
+          description: "Server 无法读取 MySQL Outbox 快照，旧指标可能已经过期。"
+
+      - alert: ShortLinkBloomUntrusted
+        expr: notification_shortlink_bloom_trusted == 0
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "短链 Bloom 当前不可信"
+          description: "短链会 fail-open 回源 MySQL，请检查 Redis、ready 和重建任务。"
+
+  - name: notification-platform-backlog
+    rules:
+      - alert: OutboxBacklogHigh
+        expr: notification_outbox_backlog{status="pending"} > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox backlog 持续超过 100"
+          description: "当前待发布 {{ $value }} 条，请检查 RocketMQ 或发布器。"
+
+      - alert: OutboxOldestEventTooOld
+        expr: notification_outbox_oldest_pending_age_seconds > 60
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "最老 Outbox 事件等待超过 60 秒"
+          description: "积压年龄为 {{ $value }} 秒，已经影响发送时效。"
+
+      - alert: OutboxDeadEventExists
+        expr: notification_outbox_backlog{status="dead"} > 0
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "存在 Outbox DEAD 事件"
+          description: "当前 DEAD 数量 {{ $value }}，需要人工检查或重放。"
+
+      - alert: RocketMQConsumerBacklogHigh
+        expr: |
+          sum(
+            rocketmq_consumer_ready_messages{
+              topic="notification-send-topic",
+              consumer_group="notification-worker-group"
+            }
+          ) > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "通知消费组 RocketMQ 积压超过 100"
+          description: "Broker ready messages={{ $value }}。"
+
+      - alert: RocketMQMessageSentToDlq
+        expr: |
+          increase(
+            rocketmq_send_to_dlq_messages_total{
+              consumer_group="notification-worker-group"
+            }[5m]
+          ) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "最近 5 分钟有通知消息进入 DLQ"
+          description: "新增 DLQ 数量 {{ $value }}。"
+
+  - name: notification-platform-channel
+    rules:
+      - alert: ChannelP95TooHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, provider) (
+              rate(notification_channel_call_duration_seconds_bucket[5m])
+            )
+          ) > 2
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "渠道 {{ $labels.provider }} P95 超过 2 秒"
+          description: "当前 P95={{ $value }} 秒。"
+
+      - alert: ChannelCircuitOpen
+        expr: notification_channel_circuit_state{state="open"} == 1
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: "渠道 {{ $labels.provider }} 熔断器已打开"
+          description: "channel={{ $labels.channel }} provider={{ $labels.provider }}。"
+
+      - alert: ChannelExecutorQueueAlmostFull
+        expr: |
+          notification_channel_executor_queued
+          /
+          clamp_min(
+            notification_channel_executor_queued
+            + notification_channel_executor_queue_remaining,
+            1
+          ) > 0.8
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "渠道 {{ $labels.channel }} 线程池队列使用率超过 80%"
+          description: "请检查渠道慢调用，不要直接盲目调大线程池。"

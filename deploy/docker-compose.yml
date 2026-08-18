@@ -91,6 +91,7 @@ services:
       - "10909:10909"
       - "10911:10911"
       - "10912:10912"
+      - "5557:5557"
     volumes:
       - ./rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.2/conf/broker.conf
       - rocketmq-store:/home/rocketmq/store
@@ -116,8 +117,12 @@ services:
     restart: unless-stopped
     ports:
       - "9090:9090"
+    depends_on:
+      - alertmanager
+      - broker
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -127,11 +132,58 @@ services:
     networks:
       - notification-network
 
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: notification-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    depends_on:
+      - mailhog
+    networks:
+      - notification-network
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    container_name: notification-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: notification123
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - notification-network
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: notification-mailhog
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+    networks:
+      - notification-network
+
 volumes:
   mysql-data:
   redis-data:
   rocketmq-store:
   prometheus-data:
+  alertmanager-data:
+  grafana-data:
 
 networks:
   notification-network:
