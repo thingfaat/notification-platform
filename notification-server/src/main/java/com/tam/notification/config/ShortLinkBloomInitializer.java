@@ -38,7 +38,10 @@ public class ShortLinkBloomInitializer implements ApplicationRunner {
         ensureCurrentSliceReady();
     }
 
-    @Scheduled(fixedDelayString = "${notification.shortlink.bloom.rebuild-check-interval-ms:60000}")
+    @Scheduled(
+            fixedDelayString = "${notification.shortlink.bloom.rebuild-check-interval-ms:60000}",
+            scheduler = ServerSchedulingConfig.SHORT_LINK_MAINTENANCE_TASK_SCHEDULER
+    )
     public void ensureCurrentSliceReady() {
         if (shortLinkProtection.isBloomReady()) {
             return;

@@ -1,5 +1,6 @@
 package com.tam.notification.observability;
 
+import com.tam.notification.config.ServerSchedulingConfig;
 import com.tam.notification.domain.shortlink.ShortLinkProtection;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -34,7 +35,8 @@ public class ShortLinkBloomMetrics {
     }
 
     @Scheduled(
-            fixedDelayString = "${notification.observability.bloom.refresh-interval-ms:15000}"
+            fixedDelayString = "${notification.observability.bloom.refresh-interval-ms:15000}",
+            scheduler = ServerSchedulingConfig.OBSERVABILITY_TASK_SCHEDULER
     )
     public void refresh() {
         try {

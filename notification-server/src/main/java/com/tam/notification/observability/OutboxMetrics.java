@@ -1,5 +1,6 @@
 package com.tam.notification.observability;
 
+import com.tam.notification.config.ServerSchedulingConfig;
 import com.tam.notification.domain.observability.OutboxBacklogSnapshot;
 import com.tam.notification.domain.observability.OutboxObservabilityRepository;
 import io.micrometer.core.instrument.Gauge;
@@ -85,7 +86,8 @@ public class OutboxMetrics {
     }
 
     @Scheduled(
-            fixedDelayString = "${notification.observability.outbox.refresh-interval-ms:5000}"
+            fixedDelayString = "${notification.observability.outbox.refresh-interval-ms:5000}",
+            scheduler = ServerSchedulingConfig.OBSERVABILITY_TASK_SCHEDULER
     )
     public void refresh() {
         try {

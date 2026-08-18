@@ -6,6 +6,7 @@ import com.tam.notification.common.trace.TraceContext;
 import com.tam.notification.domain.outbox.NotificationSendEvent;
 import com.tam.notification.observability.MqConsumeMetrics;
 import com.tam.notification.service.NotificationSendOrchestrator;
+import io.micrometer.core.instrument.Timer;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.junit.jupiter.api.AfterEach;
@@ -15,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
 public class NotificationSendListenerTest {
@@ -34,6 +36,8 @@ public class NotificationSendListenerTest {
         WorkerIdentity workerIdentity = mock(WorkerIdentity.class);
         when(workerIdentity.instanceId()).thenReturn("worker-a");
         MqConsumeMetrics metrics = mock(MqConsumeMetrics.class);
+        Timer.Sample sample = mock(Timer.Sample.class);
+        when(metrics.start(2)).thenReturn(sample);
 
         NotificationSendListener listener = new NotificationSendListener(
                 objectMapper,
@@ -74,9 +78,43 @@ public class NotificationSendListenerTest {
         listener.onMessage(message);
 
         verify(orchestrator).send(event);
+        verify(metrics).recordSuccess(sample);
+        verify(metrics, never()).recordFailure(sample);
         // 消费线程会复用，所以执行结束后必须清空。
         assertNull(TenantContext.getTenantId());
         assertNull(TraceContext.getTraceId());
+    }
+
+    @Test
+    void shouldRecordFailureAndRethrowInvalidMessage() {
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        NotificationSendOrchestrator orchestrator = mock(
+                NotificationSendOrchestrator.class
+        );
+        WorkerIdentity workerIdentity = mock(WorkerIdentity.class);
+        MqConsumeMetrics metrics = mock(MqConsumeMetrics.class);
+        Timer.Sample sample = mock(Timer.Sample.class);
+        when(metrics.start(0)).thenReturn(sample);
+
+        NotificationSendListener listener = new NotificationSendListener(
+                objectMapper,
+                orchestrator,
+                workerIdentity,
+                metrics
+        );
+
+        MessageExt message = new MessageExt();
+        message.setBody("invalid-json".getBytes(StandardCharsets.UTF_8));
+        message.setReconsumeTimes(0);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> listener.onMessage(message)
+        );
+
+        verify(metrics).recordFailure(sample);
+        verify(metrics, never()).recordSuccess(sample);
+        verifyNoInteractions(orchestrator);
     }
 
     @Test

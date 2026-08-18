@@ -46,7 +46,7 @@ public class NotificationSendListener implements RocketMQListener<MessageExt>, R
     @Override
     public void onMessage(final MessageExt message) {
         Timer.Sample sample = mqConsumeMetrics.start(message.getReconsumeTimes());
-        
+
         try {
             final var payload = new String(message.getBody(), StandardCharsets.UTF_8);
 
@@ -78,6 +78,9 @@ public class NotificationSendListener implements RocketMQListener<MessageExt>, R
             mqConsumeMetrics.recordFailure(sample);
             throw exception;
         }
+
+        // 只有业务处理和线程上下文清理都正常完成，才记录为成功消费。
+        mqConsumeMetrics.recordSuccess(sample);
     }
 
     private NotificationSendEvent deserialize(final String payload) {

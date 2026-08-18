@@ -50,6 +50,7 @@ public class JdbcOutboxObservabilityRepository
                                 0
                             ) AS oldest_pending_age_seconds
                         FROM notify_outbox
+                        WHERE publish_status IN ('NEW', 'FAILED', 'PROCESSING', 'DEAD')
                         """,
                 (resultSet, rowNum) -> new OutboxBacklogSnapshot(
                         resultSet.getLong("pending_count"),

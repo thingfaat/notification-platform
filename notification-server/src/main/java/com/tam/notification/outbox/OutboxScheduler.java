@@ -1,6 +1,7 @@
 package com.tam.notification.outbox;
 
 import com.tam.notification.common.tenant.TenantContext;
+import com.tam.notification.config.ServerSchedulingConfig;
 import com.tam.notification.domain.outbox.OutboxEvent;
 import com.tam.notification.domain.outbox.OutboxRepository;
 import com.tam.notification.mq.RocketMQEventPublisher;
@@ -30,7 +31,10 @@ public class OutboxScheduler {
     @Value("${notification.outbox.claim-timeout-seconds:30}")
     private Long claimTimeoutSeconds;
 
-    @Scheduled(fixedDelayString = "${notification.outbox.publish-interval-ms:1000}")
+    @Scheduled(
+            fixedDelayString = "${notification.outbox.publish-interval-ms:1000}",
+            scheduler = ServerSchedulingConfig.OUTBOX_TASK_SCHEDULER
+    )
     public void publish() {
 
         // 超时时间
